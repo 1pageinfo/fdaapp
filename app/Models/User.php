@@ -28,16 +28,17 @@ class User extends Authenticatable
     /**
      * User ↔ Roles (Many to Many)
      */
-   public function roles()
-{
-    return $this->belongsToMany(Role::class);
-}
+    public function roles()
+    {
+        return $this->belongsToMany(Role::class);
+    }
 
+    public function hasRole(string|array $role): bool
+    {
+        $roles = is_array($role) ? $role : [$role];
 
-public function hasRole($role)
-{
-    return $this->roles()->where('name',$role)->exists();
-}
+        return $this->roles()->whereIn('slug', $roles)->exists();
+    }
 
     /**
      * User ↔ Groups (Many to Many)
@@ -52,13 +53,36 @@ public function hasRole($role)
      */
     public function permissions()
     {
-         return $this->belongsToMany(\App\Models\Permission::class, 'permission_user', 'user_id', 'permission_id');
+        return $this->belongsToMany(\App\Models\Permission::class, 'permission_user', 'user_id', 'permission_id');
     }
 
-    public function hasPermission($permission)
-{
-    return $this->roles()->whereHas('permissions', function($q) use ($permission){
-        $q->where('name',$permission);
-    })->exists();
-}
+    public function hasPermission(string|array $permission): bool
+    {
+        $permissions = is_array($permission) ? $permission : [$permission];
+
+        if ($this->permissions()->whereIn('slug', $permissions)->exists()) {
+            return true;
+        }
+
+        return $this->roles()->whereHas('permissions', function ($q) use ($permissions) {
+            $q->whereIn('slug', $permissions);
+        })->exists();
+    }
+
+    public function hasPermissionTo(string|array $permission): bool
+    {
+        return $this->hasPermission($permission);
+    }
+
+    public function allPermissionSlugs(): array
+    {
+        $this->loadMissing('permissions:id,slug', 'roles.permissions:id,slug');
+
+        $direct = $this->permissions->pluck('slug');
+        $viaRoles = $this->roles->flatMap(function ($role) {
+            return $role->permissions->pluck('slug');
+        });
+
+        return $direct->merge($viaRoles)->unique()->values()->all();
+    }
 }

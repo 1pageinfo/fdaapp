@@ -339,11 +339,7 @@
 
     @php
       $appPerms = auth()->check()
-        ? \DB::table('permission_user')
-          ->join('permissions', 'permission_user.permission_id', '=', 'permissions.id')
-          ->where('permission_user.user_id', auth()->id())
-          ->pluck('permissions.slug')
-          ->toArray()
+        ? auth()->user()->allPermissionSlugs()
         : [];
     @endphp
 

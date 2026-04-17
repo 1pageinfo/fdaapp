@@ -76,10 +76,7 @@ class SettingController extends Controller
 
                 $permissionIds = [];
                 foreach ($submittedSlugs as $slug) {
-                    $perm = Permission::firstOrCreate(
-                        ['slug' => $slug],
-                        ['name' => ucfirst(str_replace('.', ' ', $slug))]
-                    );
+                    $perm = Permission::firstOrCreate(['slug' => $slug]);
                     $permissionIds[] = $perm->id;
                 }
 

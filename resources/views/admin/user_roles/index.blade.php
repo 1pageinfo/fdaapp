@@ -22,7 +22,7 @@
                             <label class="me-2">
                                 <input type="checkbox" name="roles[]" value="{{ $role->id }}"
                                        {{ $user->roles->contains($role->id) ? 'checked' : '' }}>
-                                {{ $role->name }}
+                                {{ $role->slug }}
                             </label>
                         @endforeach
                         <button class="btn btn-sm btn-primary">Save</button>

@@ -33,9 +33,9 @@ class RegisterController extends Controller
         ]);
 
         // Assign default role "member"
-        $memberRole = Role::where('name', 'member')->first();
+        $memberRole = Role::where('slug', 'member')->first();
         if ($memberRole) {
-            $user->roles()->attach($memberRole);
+            $user->roles()->syncWithoutDetaching([$memberRole->id]);
         }
 
         auth()->login($user);

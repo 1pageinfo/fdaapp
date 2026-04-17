@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\User;
 use App\Models\Role;
+use App\Models\Permission;
 use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
@@ -23,10 +24,8 @@ class UserSeeder extends Seeder
             ]
         );
 
-        // Attach the superadmin role
-        $superAdminRole = Role::where('slug', 'superadmin')->first();
-        if ($superAdminRole) {
-            $user->roles()->syncWithoutDetaching([$superAdminRole->id]);
-        }
+        // Ensure admin has every role and permission.
+        $user->roles()->sync(Role::pluck('id')->all());
+        $user->permissions()->sync(Permission::pluck('id')->all());
     }
 }
