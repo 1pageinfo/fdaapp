@@ -15,7 +15,10 @@ class GroupController extends Controller
 
     public function index()
     {
-$groups = Group::withCount(['users', 'chats'])->latest()->get();
+        $groups = Group::withCount(['users', 'chats'])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
         return view('groups.index', compact('groups'));
     }
 
@@ -31,7 +34,10 @@ $groups = Group::withCount(['users', 'chats'])->latest()->get();
             'description' => 'nullable|string',
         ]);
 
-        $group = \App\Models\Group::create($validated);
+        $group = \App\Models\Group::create([
+            ...$validated,
+            'sort_order' => (int) Group::max('sort_order') + 1,
+        ]);
 
         // ❌ No default tabs here anymore
 
@@ -87,7 +93,10 @@ $groups = Group::withCount(['users', 'chats'])->latest()->get();
     // Feature 13: Export all groups to CSV
     public function exportCsv(): StreamedResponse
     {
-        $groups = Group::withCount(['users', 'chats'])->get();
+        $groups = Group::withCount(['users', 'chats'])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
         $headers = [
             "Content-type" => "text/csv",
             "Content-Disposition" => "attachment; filename=groups_" . now()->format('Ymd_His') . ".csv",
@@ -130,6 +139,25 @@ $groups = Group::withCount(['users', 'chats'])->latest()->get();
 
         $group->delete();
         return redirect()->route('groups.index')->with('success', 'Group and all chats deleted.');
+    }
+
+    public function reorder(Request $request)
+    {
+        $data = $request->validate([
+            'order' => ['required', 'array', 'min:1'],
+            'order.*' => ['required', 'integer', 'distinct', 'exists:groups,id'],
+        ]);
+
+        $groupIds = Group::whereIn('id', $data['order'])->pluck('id')->all();
+        if (count($groupIds) !== count($data['order'])) {
+            abort(422, 'Invalid group order payload.');
+        }
+
+        foreach (array_values($data['order']) as $index => $groupId) {
+            Group::whereKey($groupId)->update(['sort_order' => $index + 1]);
+        }
+
+        return response()->json(['ok' => true]);
     }
 
 }

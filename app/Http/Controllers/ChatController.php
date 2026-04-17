@@ -16,6 +16,8 @@ class ChatController extends Controller
     {
         abort_unless($chat->group_id === $group->id, 404);
 
+        $group->load('chats');
+
         $messages = \App\Models\ChatMessage::with(['user', 'file'])
             ->where('chat_id', $chat->id)
             ->latest()->limit(50)->get()->reverse();
@@ -120,6 +122,7 @@ class ChatController extends Controller
         \App\Models\Chat::create([
             'group_id' => $group->id,
             'tab' => $data['tab'],
+            'sort_order' => (int) $group->chats()->max('sort_order') + 1,
         ]);
 
         return back()->with('success', 'Tab created.');
@@ -151,6 +154,25 @@ class ChatController extends Controller
         abort_unless($chat->group_id === $group->id, 404);
         $chat->delete(); // messages cascade (FK) if set; otherwise, delete messages first
         return back()->with('success', 'Tab deleted.');
+    }
+
+    public function reorderTabs(Request $request, \App\Models\Group $group)
+    {
+        $data = $request->validate([
+            'order' => ['required', 'array', 'min:1'],
+            'order.*' => ['required', 'integer', 'distinct'],
+        ]);
+
+        $chatIds = $group->chats()->whereIn('id', $data['order'])->pluck('id')->all();
+        if (count($chatIds) !== count($data['order'])) {
+            abort(422, 'Invalid tab order payload.');
+        }
+
+        foreach (array_values($data['order']) as $index => $chatId) {
+            \App\Models\Chat::whereKey($chatId)->update(['sort_order' => $index + 1]);
+        }
+
+        return response()->json(['ok' => true]);
     }
 
     public function pin(\App\Models\Group $group, \App\Models\Chat $chat, \App\Models\ChatMessage $message)

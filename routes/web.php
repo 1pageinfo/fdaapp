@@ -15,7 +15,7 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\SanghController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\Admin\UserRoleController;
+use App\Http\Controllers\Auth\Admin\UserRoleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\LinkController;
@@ -109,12 +109,14 @@ Route::middleware('auth')->group(function () {
     Route::post('groups/{group}/members', [GroupController::class, 'addMember'])->name('groups.members.add');
     Route::delete('groups/{group}/members/{user}', [GroupController::class, 'removeMember'])->name('groups.members.remove');
     Route::delete('/groups/{group}', [GroupController::class, 'destroy'])->name('groups.destroy');
+    Route::post('/groups/reorder', [GroupController::class, 'reorder'])->name('groups.reorder');
 
     // CSV export
     Route::get('groups-export', [GroupController::class, 'exportCsv'])->name('groups.export');
 
     // Tab management (dynamic)
     Route::post('groups/{group}/tabs', [ChatController::class, 'storeTab'])->name('groups.tabs.store');
+    Route::post('groups/{group}/tabs/reorder', [ChatController::class, 'reorderTabs'])->name('groups.tabs.reorder');
     Route::put('groups/{group}/tabs/{chat}', [ChatController::class, 'updateTab'])->name('groups.tabs.update');
     Route::delete('groups/{group}/tabs/{chat}', [ChatController::class, 'destroyTab'])->name('groups.tabs.destroy');
 

@@ -9,7 +9,7 @@ class Group extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name','description'];
+    protected $fillable = ['name','description', 'sort_order'];
 
     // Default tabs for a new group (you can seed/create these)
     public const DEFAULT_TABS = [
@@ -28,6 +28,8 @@ class Group extends Model
 
     public function chats()
     {
-        return $this->hasMany(Chat::class);
+        return $this->hasMany(Chat::class)
+            ->orderBy('sort_order')
+            ->orderBy('id');
     }
 }

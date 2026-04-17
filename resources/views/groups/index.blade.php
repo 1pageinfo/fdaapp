@@ -35,7 +35,10 @@
 
     {{-- Chat-style list --}}
     <div class="card shadow-sm">
-      <ul class="list-group list-group-flush" id="groupList">
+      <div class="px-3 py-2 border-bottom bg-light small text-muted">
+        Drag groups to change their order.
+      </div>
+      <ul class="list-group list-group-flush" id="groupList" data-reorder-url="{{ route('groups.reorder') }}">
         @forelse($groups as $g)
           @php
             $initial = mb_strtoupper(mb_substr($g->name ?? 'G', 0, 1));
@@ -44,10 +47,14 @@
             $color = $palette[($g->id ?? 0) % count($palette)];
           @endphp
 
-          <li class="list-group-item p-0">
-            <a href="{{ route('groups.show', $g) }}"
-              class="d-flex align-items-center p-3 text-reset text-decoration-none chat-item"
-              data-name="{{ Str::lower($g->name) }}" data-desc="{{ Str::lower($g->description) }}">
+          <li class="list-group-item p-0 sortable-item" data-id="{{ $g->id }}" draggable="true">
+            <div class="d-flex align-items-center">
+              <button type="button" class="btn btn-link text-muted px-3 py-3 drag-handle" aria-label="Reorder group" title="Drag to reorder">
+                <i class="ti-move"></i>
+              </button>
+              <a href="{{ route('groups.show', $g) }}"
+                class="d-flex align-items-center flex-grow-1 p-3 pl-0 text-reset text-decoration-none chat-item"
+                data-name="{{ Str::lower($g->name) }}" data-desc="{{ Str::lower($g->description) }}">
               {{-- Avatar / initials --}}
               <div class="avatar {{ $color }} text-white flex-shrink-0 mr-3" aria-hidden="true">
                 {{ $initial }}
@@ -88,7 +95,8 @@
               <div class="ml-3 d-none d-sm-block text-muted">
                 <i class="ti-angle-right"></i>
               </div>
-            </a>
+              </a>
+            </div>
           </li>
         @empty
           <li class="list-group-item py-4 text-center text-muted">
@@ -101,6 +109,19 @@
     <style>
       .chat-item:hover {
         background: rgba(0, 0, 0, 0.03);
+      }
+
+      .sortable-item.is-dragging {
+        opacity: .55;
+      }
+
+      .drag-handle {
+        cursor: grab;
+        text-decoration: none;
+      }
+
+      .drag-handle:focus {
+        box-shadow: none;
       }
 
       .avatar {
@@ -144,6 +165,69 @@
           list.querySelectorAll('.chat-item').forEach(item => {
             const hay = (item.dataset.name + ' ' + item.dataset.desc).trim();
             item.parentElement.style.display = hay.includes(term) ? '' : 'none';
+          });
+        });
+      })();
+
+      (function () {
+        const list = document.getElementById('groupList');
+        if (!list) return;
+
+        let dragged = null;
+
+        const persistOrder = async () => {
+          const order = [...list.querySelectorAll('.sortable-item')].map(item => Number(item.dataset.id));
+
+            const response = await fetch(list.dataset.reorderUrl, {
+            method: 'POST',
+              credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+            },
+            body: JSON.stringify({ order }),
+          });
+
+            if (!response.ok) {
+              throw new Error('Group reorder save failed');
+            }
+        };
+
+        list.querySelectorAll('.sortable-item').forEach(item => {
+            item.addEventListener('dragstart', event => {
+            dragged = item;
+            item.classList.add('is-dragging');
+              if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', String(item.dataset.id));
+              }
+          });
+
+          item.addEventListener('dragend', async () => {
+            item.classList.remove('is-dragging');
+            if (!dragged) {
+              return;
+            }
+
+            try {
+              await persistOrder();
+            } catch (error) {
+              window.location.reload();
+            }
+
+            dragged = null;
+          });
+
+          item.addEventListener('dragover', event => {
+            event.preventDefault();
+            if (!dragged || dragged === item) {
+              return;
+            }
+
+            const rect = item.getBoundingClientRect();
+            const shouldInsertAfter = event.clientY > rect.top + rect.height / 2;
+            list.insertBefore(dragged, shouldInsertAfter ? item.nextSibling : item);
           });
         });
       })();

@@ -5,6 +5,7 @@
   <!-- Required meta tags -->
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{{ config('app.name', 'Laravel App') }}</title>
   <!-- plugins:css -->
   <link rel="stylesheet" href="{{ asset('theme/vendors/feather/feather.css') }}">
@@ -21,6 +22,7 @@
   <!-- endinject -->
   <link rel="shortcut icon" href="{{ asset('theme/images/logo.jpg') }}" />
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  @stack('styles')
 
 </head>
 
@@ -361,6 +363,7 @@
       document.addEventListener('DOMContentLoaded', gateHideByPermission);
     </script>
     @yield('scripts')
+    @stack('scripts')
 
     <!-- plugins:js -->
     <script src="{{ asset('theme/vendors/js/vendor.bundle.base.js') }}"></script>

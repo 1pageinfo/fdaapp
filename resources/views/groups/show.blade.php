@@ -45,21 +45,27 @@
 
         {{-- Channel list --}}
         <div class="card shadow-sm">
-          <ul class="list-group list-group-flush" id="tabList">
+          <div class="px-3 py-2 border-bottom bg-light small text-muted">
+            Drag tabs to change their order in this group and in the chat panel.
+          </div>
+          <ul class="list-group list-group-flush" id="tabList" data-reorder-url="{{ route('groups.tabs.reorder', $group) }}">
             @forelse($group->chats as $c)
               @php
                 $initial = mb_strtoupper(mb_substr($c->tab ?? 'T', 0, 1));
                 $palette = ['bg-primary', 'bg-success', 'bg-info', 'bg-warning', 'bg-danger', 'bg-secondary'];
                 $color = $palette[($c->id ?? 0) % count($palette)];
               @endphp
-              <li class="list-group-item p-0">
+              <li class="list-group-item p-0 sortable-tab-item" data-id="{{ $c->id }}" draggable="true">
                 <div class="d-flex align-items-center p-3 channel-row" data-tab="{{ Str::lower($c->tab) }}">
+                  <button type="button" class="btn btn-link text-muted px-0 mr-3 drag-handle" aria-label="Reorder tab" title="Drag to reorder" draggable="true">
+                    <i class="ti-move"></i>
+                  </button>
                   {{-- Avatar/initial --}}
                   <div class="avatar {{ $color }} text-white flex-shrink-0 mr-3" aria-hidden="true">{{ $initial }}</div>
 
                   {{-- Main --}}
                   <div class="flex-grow-1 min-w-0">
-                    <a href="{{ route('groups.chat.show', [$group, $c]) }}" class="d-block text-reset text-decoration-none">
+                    <a href="{{ route('groups.chat.show', [$group, $c]) }}" class="d-block text-reset text-decoration-none" draggable="false">
                       <div class="d-flex justify-content-between align-items-center">
                         <h5 class="mb-1 text-truncate"># {{ $c->tab }}</h5>
                         <i class="ti-angle-right text-muted d-none d-sm-inline"></i>
@@ -228,6 +234,10 @@
       background: rgba(0, 0, 0, 0.03);
     }
 
+    .sortable-tab-item.is-dragging {
+      opacity: .55;
+    }
+
     .avatar {
       width: 42px;
       height: 42px;
@@ -249,6 +259,69 @@
 @push('scripts')
   <script>
     // Filter tabs by name
+    (function () {
+      const list = document.getElementById('tabList');
+      if (!list) return;
+
+      let dragged = null;
+
+      const persistOrder = async () => {
+        const order = [...list.querySelectorAll('.sortable-tab-item')].map(item => Number(item.dataset.id));
+
+        const response = await fetch(list.dataset.reorderUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+          },
+          body: JSON.stringify({ order }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Tab reorder save failed');
+        }
+      };
+
+      list.querySelectorAll('.sortable-tab-item').forEach(item => {
+        item.addEventListener('dragstart', event => {
+          dragged = item;
+          item.classList.add('is-dragging');
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(item.dataset.id));
+          }
+        });
+
+        item.addEventListener('dragend', async () => {
+          item.classList.remove('is-dragging');
+          if (!dragged) {
+            return;
+          }
+
+          try {
+            await persistOrder();
+          } catch (error) {
+            window.location.reload();
+          }
+
+          dragged = null;
+        });
+
+        item.addEventListener('dragover', event => {
+          event.preventDefault();
+          if (!dragged || dragged === item) {
+            return;
+          }
+
+          const rect = item.getBoundingClientRect();
+          const shouldInsertAfter = event.clientY > rect.top + rect.height / 2;
+          list.insertBefore(dragged, shouldInsertAfter ? item.nextSibling : item);
+        });
+      });
+    })();
+
     (function () {
       const q = document.getElementById('tabFilter');
       const list = document.getElementById('tabList');

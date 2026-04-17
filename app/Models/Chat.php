@@ -9,7 +9,7 @@ class Chat extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['group_id','tab','pinned_message_id'];
+    protected $fillable = ['group_id','tab','pinned_message_id', 'sort_order'];
 
     public function group()
     {
