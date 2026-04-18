@@ -64,7 +64,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('folders', FolderController::class);
     Route::resource('receipts', ReceiptController::class);
     Route::resource('meetings', MeetingController::class);
-    Route::resource('sanghs', SanghController::class)->except(['show']);
+    Route::resource('sanghs', SanghController::class);
     Route::resource('links', LinkController::class);
 
    
@@ -88,12 +88,12 @@ Route::middleware('auth')->group(function () {
     Route::get('receipts-export', [ReceiptController::class, 'exportCsv'])->name('receipts.export');
     // Only the actions you have implemented
     Route::resource('receipts', ReceiptController::class)->only(['index', 'create', 'store']);
-    Route::resource('sanghs', SanghController::class)->only(['index', 'create', 'store']);
-    Route::get('sanghs-export', [SanghController::class, 'exportCsv'])->name('sanghs.export');
-    Route::post('sanghs-import', [SanghController::class, 'importCsv'])->name('sanghs.import');
+    Route::get('sanghs-export', [SanghController::class, 'exportExcel'])->name('sanghs.export');
+    Route::post('sanghs-import', [SanghController::class, 'importExcel'])->name('sanghs.import');
     Route::get('sanghs-template', [SanghController::class, 'downloadTemplate'])->name('sanghs.template');
-    Route::get('sanghs/{sangh}/edit', [SanghController::class, 'edit'])->name('sanghs.edit');
-    Route::get('/sanghs/{sangh}/show', [SanghController::class, 'show'])->name('sanghs.show');
+    Route::post('sanghs-seed-placeholders', [SanghController::class, 'seedPlaceholders'])->name('sanghs.seed_placeholders');
+    Route::post('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'updateRenewal'])->name('sanghs.renewals.update');
+    Route::get('/sanghs/{sangh}/receipt/{year}/pdf', [SanghController::class, 'downloadReceiptPdf'])->name('sanghs.receipt.pdf');
     Route::get('/sanghs/{sangh}/pdf', [SanghController::class, 'downloadPdf'])->name('sanghs.pdf');         // generate & stream download
     Route::get('/sanghs/{sangh}/save-pdf', [SanghController::class, 'savePdfToStorage'])->name('sanghs.save_pdf'); // save to storage & return link
     Route::get('/sanghs/{sangh}/download-stored', [SanghController::class, 'downloadStoredPdf'])->name('sanghs.download_stored'); // download saved file

@@ -2,20 +2,109 @@
 
 namespace App\Http\Controllers;
 
-use PDF;
 use App\Models\Sangh;
+use App\Models\SanghRenewal;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Support\Str;
+use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 
 class SanghController extends Controller
 {
+    private const IMPORT_HEADERS = [
+        'Unique संघाचा अनु क्र.',
+        'प्रादेशिक विभागातील संघाचा अनु क्र.',
+        'जिल्हा मधे संघाचा अनु. क्र.',
+        'वर्ष',
+        'संघाचे नाव',
+        'श्रेणी',
+        'संघ प्रकार',
+        'प्रादेशिक विभाग',
+        'जिल्हा',
+        'तालुका',
+        'गाव',
+        'शहर',
+        'मुक्काम पोस्ट',
+        'पिनकोड',
+        'पत्ता',
+        'रस्ता / पथ',
+        'विभाग/प्रभाग',
+        'पुरुष सभासद संख्या',
+        'महिला सभासद संख्या',
+        'एकूण सभासद संख्या',
+        'अध्यक्ष',
+        'अध्यक्ष मोबाईल',
+        'अध्यक्ष व्हॉट्सअप',
+        'अध्यक्ष इमेल',
+        'सचिव',
+        'सचिव मोबाईल',
+        'सचिव व्हॉट्सअप',
+        'सचिव इमेल',
+    ];
+
+    private const RENEWAL_HEADERS = [
+        'Unique संघाचा अनु क्र.',
+        'वर्ष',
+        'फेस्कॉम पावती क्र.',
+        'फेस्कॉम पावती दिनांक',
+        'पुरुष सभासद संख्या',
+        'महिला सभासद संख्या',
+        'एकूण सभासद संख्या',
+        'वार्षिक शुल्क',
+        'विकास निधी शुल्क',
+        'दंड शुल्क',
+        'पावती रक्कम (भरलेली)',
+        'स्थिती',
+    ];
+
     public function index(Request $request)
     {
-        $sanghs = Sangh::orderBy('sangh_sr_no', 'asc')->paginate(15);
-        return view('sanghs.index', compact('sanghs'));
+        $query = Sangh::query();
+
+        if ($request->filled('pradeshik_vibhag')) {
+            $query->where('pradeshik_vibhag', $request->input('pradeshik_vibhag'));
+        }
+
+        if ($request->filled('district')) {
+            $query->where('district', $request->input('district'));
+        }
+
+        if ($request->filled('year')) {
+            $query->where('registration_year', (int) $request->input('year'));
+        }
+
+        if ($request->filled('month')) {
+            $query->whereMonth('created_at', (int) $request->input('month'));
+        }
+
+        if ($request->filled('from_date')) {
+            $query->whereDate('created_at', '>=', $request->input('from_date'));
+        }
+
+        if ($request->filled('to_date')) {
+            $query->whereDate('created_at', '<=', $request->input('to_date'));
+        }
+
+        if ($request->filled('renewal_year') && $request->filled('payment_status')) {
+            $isPaid = $request->input('payment_status') === 'paid';
+            $query->whereHas('renewals', function ($renewalQuery) use ($request, $isPaid) {
+                $renewalQuery
+                    ->where('renewal_year', (int) $request->input('renewal_year'))
+                    ->where('is_paid', $isPaid);
+            });
+        }
+
+        $sanghs = $query->orderBy('sangh_sr_no', 'asc')->paginate(15)->withQueryString();
+
+        $vibhags = Sangh::query()->whereNotNull('pradeshik_vibhag')->distinct()->orderBy('pradeshik_vibhag')->pluck('pradeshik_vibhag');
+        $districts = Sangh::query()->whereNotNull('district')->distinct()->orderBy('district')->pluck('district');
+        $years = range((int) date('Y'), 2010);
+
+        return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'years'));
     }
 
     public function create()
@@ -25,38 +114,22 @@ class SanghController extends Controller
 
     public function store(Request $request)
     {
-        $rules = [
-            'name_of_sangh' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'male' => 'nullable|integer|min:0',
-            'female' => 'nullable|integer|min:0',
-            'receipt_amount' => 'nullable|numeric',
-            'date_meeting' => 'nullable|date',
-            'receipt_date' => 'nullable|date',
-            'total_members' => 'nullable|integer|min:0',
-        ];
+        $validated = $request->validate($this->rules());
 
-        $validator = Validator::make($request->all(), $rules);
+        DB::transaction(function () use ($validated) {
+            $numbering = $this->makeNumbering($validated['pradeshik_vibhag'] ?? null, $validated['district'] ?? null, $validated['pradeshik_vibhag_code'] ?? null, $validated['district_code'] ?? null);
 
-        if ($validator->fails()) {
-            return back()->withErrors($validator)->withInput();
-        }
+            $sangh = Sangh::create(array_merge(
+                $this->normalizePayload($validated),
+                $numbering,
+                [
+                    'created_by' => Auth::id(),
+                    'created_date' => now(),
+                ]
+            ));
 
-        // Dynamic Sangh Sr No: max + 1
-        $max = Sangh::max('sangh_sr_no');
-        $nextSr = $max ? $max + 1 : 1;
-
-        $data = $request->only([
-            'name_of_sangh','district','district_no','taluka','city','division','division_no',
-            'total_m_f','date_meeting','receipt_no','receipt_date','receipt_amount','division_membership_no',
-            'male','female','total_members','address','president','tel_no','alt_tel_no','email','secretary'
-        ]);
-
-        $data['sangh_sr_no'] = $nextSr;
-        $data['created_by'] = Auth::id() ?? null;
-        $data['created_date'] = now();
-
-        Sangh::create($data);
+            $this->ensureRenewalsForSangh($sangh);
+        });
 
         return redirect()->route('sanghs.index')->with('success', 'Sangh created successfully.');
     }
@@ -66,38 +139,19 @@ class SanghController extends Controller
         return view('sanghs.edit', compact('sangh'));
     }
     public function show(Sangh $sangh)
-{
-    $sangh->load('creator');  
-    return view('sanghs.show', compact('sangh'));
-}
+    {
+        $sangh->load(['creator', 'renewals']);
+        $renewals = $sangh->renewals->sortBy('renewal_year');
+        return view('sanghs.show', compact('sangh', 'renewals'));
+    }
 
 
     public function update(Request $request, Sangh $sangh)
     {
-        $rules = [
-            'name_of_sangh' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'male' => 'nullable|integer|min:0',
-            'female' => 'nullable|integer|min:0',
-            'receipt_amount' => 'nullable|numeric',
-            'date_meeting' => 'nullable|date',
-            'receipt_date' => 'nullable|date',
-            'total_members' => 'nullable|integer|min:0',
-        ];
+        $validated = $request->validate($this->rules(false));
 
-        $validator = Validator::make($request->all(), $rules);
-
-        if ($validator->fails()) {
-            return back()->withErrors($validator)->withInput();
-        }
-
-        $data = $request->only([
-            'name_of_sangh','district','district_no','taluka','city','division','division_no',
-            'total_m_f','date_meeting','receipt_no','receipt_date','receipt_amount','division_membership_no',
-            'male','female','total_members','address','president','tel_no','alt_tel_no','email','secretary'
-        ]);
-
-        $sangh->update($data);
+        $sangh->update($this->normalizePayload($validated));
+        $this->ensureRenewalsForSangh($sangh);
 
         return redirect()->route('sanghs.index')->with('success', 'Sangh updated successfully.');
     }
@@ -108,237 +162,219 @@ class SanghController extends Controller
         return redirect()->route('sanghs.index')->with('success', 'Sangh deleted.');
     }
 
-    /**
-     * Export all Sanghs to CSV
-     */
-    public function exportCsv()
+    public function exportExcel()
     {
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="sanghs_export_' . date('Y-m-d_His') . '.csv"',
-        ];
+        $sanghs = Sangh::query()->with('renewals')->orderBy('sangh_sr_no')->get();
 
-        $columns = [
-            'Sangh Sr. No',
-            'Name of Sangh',
-            'District',
-            'District No.',
-            'Taluka',
-            'City',
-            'Division',
-            'Division No.',
-            'Total M/F',
-            'Date (Regulatory Board / Annual / Special Meeting )',
-            'Receipt No.',
-            'Receipt Date',
-            'Receipt Amout',
-            'Division Membership No.',
-            'Male',
-            'Female',
-            'Total Members',
-            'Address',
-            'President',
-            'Tel. No.',
-            'Alt Tel. No.',
-            'Email ID',
-            'Secretary',
-            'Created By',
-            'Created Date',
-        ];
+        $masterRows = $sanghs->map(function (Sangh $s) {
+            return [
+                $s->unique_ref_no,
+                $s->pradeshik_ref_no,
+                $s->district_ref_no,
+                $s->registration_year,
+                $s->name_of_sangh,
+                $s->category_code,
+                $s->sangh_type_code,
+                $s->pradeshik_vibhag,
+                $s->district,
+                $s->taluka,
+                $s->village,
+                $s->city,
+                $s->mukkam_post,
+                $s->pincode,
+                $s->address,
+                $s->road_path,
+                $s->ward_section,
+                $s->male,
+                $s->female,
+                $s->total_members,
+                $s->president,
+                $s->president_phone,
+                $s->president_whatsapp,
+                $s->president_email,
+                $s->secretary,
+                $s->secretary_phone,
+                $s->secretary_whatsapp,
+                $s->secretary_email,
+            ];
+        })->values()->all();
 
-        $callback = function() use ($columns) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, $columns);
+        $renewalRows = [];
+        foreach ($sanghs as $s) {
+            foreach ($s->renewals as $renewal) {
+                $renewalRows[] = [
+                    $s->unique_ref_no,
+                    $renewal->renewal_year,
+                    $renewal->feskcom_receipt_no,
+                    optional($renewal->feskcom_receipt_date)->format('Y-m-d'),
+                    $renewal->male_members,
+                    $renewal->female_members,
+                    $renewal->total_members,
+                    $renewal->annual_fee,
+                    $renewal->development_fee,
+                    $renewal->penalty_fee,
+                    $renewal->paid_amount,
+                    $renewal->is_paid ? 'Paid' : 'Unpaid',
+                ];
+            }
+        }
 
-            Sangh::orderBy('sangh_sr_no')->chunk(500, function($sanghs) use ($out) {
-                foreach ($sanghs as $s) {
-                    fputcsv($out, [
-                        $s->sangh_sr_no,
-                        $s->name_of_sangh,
-                        $s->district,
-                        $s->district_no,
-                        $s->taluka,
-                        $s->city,
-                        $s->division,
-                        $s->division_no,
-                        $s->total_m_f,
-                        $s->date_meeting ? $s->date_meeting->format('Y-m-d') : '',
-                        $s->receipt_no,
-                        $s->receipt_date ? $s->receipt_date->format('Y-m-d') : '',
-                        $s->receipt_amount,
-                        $s->division_membership_no,
-                        $s->male,
-                        $s->female,
-                        $s->total_members,
-                        $s->address,
-                        $s->president,
-                        $s->tel_no,
-                        $s->alt_tel_no,
-                        $s->email,
-                        $s->secretary,
-                        $s->created_by,
-                        $s->created_date ? $s->created_date->format('Y-m-d H:i:s') : $s->created_at->format('Y-m-d H:i:s'),
-                    ]);
-                }
-            });
+        $export = new \App\Exports\SanghWorkbookExport(
+            self::IMPORT_HEADERS,
+            $masterRows,
+            self::RENEWAL_HEADERS,
+            $renewalRows
+        );
 
-            fclose($out);
-        };
-
-        return response()->stream($callback, 200, $headers);
+        return Excel::download($export, 'sangh_export_' . now()->format('Ymd_His') . '.xlsx');
     }
 
-    /**
-     * Import Sanghs from CSV file.
-     * Expected header names (case-insensitive): match the export column names
-     */
-    public function importCsv(Request $request)
+    public function importExcel(Request $request)
     {
         $request->validate([
-            'csv_file' => 'required|file|mimes:csv,txt',
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv',
         ]);
 
-        $file = $request->file('csv_file');
-        $path = $file->getRealPath();
+        $file = $request->file('excel_file');
+        $spreadsheet = IOFactory::load($file->getRealPath());
+        $sheets = [];
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            $sheets[] = $sheet->toArray(null, true, true, false);
+        }
 
-        $headerMap = [];
-        if (($handle = fopen($path, 'r')) !== false) {
-            $row = 0;
-            $errors = [];
-            while (($data = fgetcsv($handle, 0, ",")) !== false) {
-                $row++;
-                if ($row == 1) {
-                    // header
-                    foreach ($data as $i => $h) {
-                        $headerMap[$i] = strtolower(trim($h));
-                    }
+        $masterRows = $sheets[0] ?? [];
+        $renewalRows = $sheets[1] ?? [];
+
+        if (count($masterRows) < 2) {
+            return back()->with('error', 'Excel file has no data rows.');
+        }
+
+        $masterHeader = array_map('trim', $masterRows[0]);
+        $importErrors = [];
+
+        DB::transaction(function () use ($masterRows, $masterHeader, $renewalRows, &$importErrors) {
+            for ($i = 1; $i < count($masterRows); $i++) {
+                $row = $masterRows[$i];
+                if (!count(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
                     continue;
                 }
 
-                // skip empty rows
-                if (count(array_filter($data)) == 0) {
+                $mapped = $this->mapRowByHeader($masterHeader, $row);
+                $name = trim((string) ($mapped['संघाचे नाव'] ?? ''));
+
+                if ($name === '') {
+                    $importErrors[] = 'Row ' . ($i + 1) . ': संघाचे नाव required. Skipped.';
                     continue;
                 }
 
-                // map values by header name
-                $rowAssoc = [];
-                foreach ($headerMap as $i => $colName) {
-                    $rowAssoc[$colName] = isset($data[$i]) ? trim($data[$i]) : null;
-                }
+                $pradeshikVibhag = $mapped['प्रादेशिक विभाग'] ?? null;
+                $district = $mapped['जिल्हा'] ?? null;
+                $pradeshikCode = $this->extractCodePart($mapped['प्रादेशिक विभागातील संघाचा अनु क्र.'] ?? null);
+                $districtCode = $this->extractCodePart($mapped['जिल्हा मधे संघाचा अनु. क्र.'] ?? null);
 
-                // Build data for Sangh
-                $nextSr = Sangh::max('sangh_sr_no');
-                $nextSr = $nextSr ? $nextSr + 1 : 1;
+                $numbering = $this->makeNumbering($pradeshikVibhag, $district, $pradeshikCode, $districtCode);
 
-                $sanghData = [
-                    'sangh_sr_no' => $nextSr,
-                    'name_of_sangh' => $rowAssoc['name of sangh'] ?? $rowAssoc['name_of_sangh'] ?? null,
-                    'district' => $rowAssoc['district'] ?? null,
-                    'district_no' => $rowAssoc['district no.'] ?? $rowAssoc['district no'] ?? $rowAssoc['district_no'] ?? null,
-                    'taluka' => $rowAssoc['taluka'] ?? null,
-                    'city' => $rowAssoc['city'] ?? null,
-                    'division' => $rowAssoc['division'] ?? null,
-                    'division_no' => $rowAssoc['division no.'] ?? $rowAssoc['division no'] ?? null,
-                    'total_m_f' => $rowAssoc['total m/f'] ?? $rowAssoc['total_m_f'] ?? null,
-                    'date_meeting' => $this->parseDateIfPresent($rowAssoc['date (regulatory board / annual / special meeting )'] ?? $rowAssoc['date'] ?? null),
-                    'receipt_no' => $rowAssoc['receipt no.'] ?? $rowAssoc['receipt_no'] ?? null,
-                    'receipt_date' => $this->parseDateIfPresent($rowAssoc['receipt date'] ?? $rowAssoc['receipt_date'] ?? null),
-                    'receipt_amount' => $rowAssoc['receipt amout'] ?? $rowAssoc['receipt amount'] ?? $rowAssoc['receipt_amount'] ?? null,
-                    'division_membership_no' => $rowAssoc['division membership no.'] ?? null,
-                    'male' => is_numeric($rowAssoc['male'] ?? null) ? (int)$rowAssoc['male'] : null,
-                    'female' => is_numeric($rowAssoc['female'] ?? null) ? (int)$rowAssoc['female'] : null,
-                    'total_members' => is_numeric($rowAssoc['total members'] ?? null) ? (int)$rowAssoc['total members'] : null,
-                    'address' => $rowAssoc['address'] ?? null,
-                    'president' => $rowAssoc['president'] ?? null,
-                    'tel_no' => $rowAssoc['tel. no.'] ?? $rowAssoc['tel no'] ?? $rowAssoc['tel_no'] ?? null,
-                    'alt_tel_no' => $rowAssoc['alt tel. no.'] ?? $rowAssoc['alt tel no'] ?? $rowAssoc['alt_tel_no'] ?? null,
-                    'email' => $rowAssoc['email id'] ?? $rowAssoc['email'] ?? null,
-                    'secretary' => $rowAssoc['secretary'] ?? null,
-                    'created_by' => Auth::id() ?? null,
+                $sangh = Sangh::create(array_merge([
+                    'name_of_sangh' => $name,
+                    'registration_year' => $this->intOrNull($mapped['वर्ष'] ?? null),
+                    'category_code' => $this->codeChar($mapped['श्रेणी'] ?? null),
+                    'sangh_type_code' => $this->codeChar($mapped['संघ प्रकार'] ?? null),
+                    'pradeshik_vibhag' => $pradeshikVibhag,
+                    'district' => $district,
+                    'taluka' => $mapped['तालुका'] ?? null,
+                    'village' => $mapped['गाव'] ?? null,
+                    'city' => $mapped['शहर'] ?? null,
+                    'mukkam_post' => $mapped['मुक्काम पोस्ट'] ?? null,
+                    'pincode' => $mapped['पिनकोड'] ?? null,
+                    'address' => $mapped['पत्ता'] ?? null,
+                    'road_path' => $mapped['रस्ता / पथ'] ?? null,
+                    'ward_section' => $mapped['विभाग/प्रभाग'] ?? null,
+                    'male' => $this->intOrNull($mapped['पुरुष सभासद संख्या'] ?? null),
+                    'female' => $this->intOrNull($mapped['महिला सभासद संख्या'] ?? null),
+                    'total_members' => $this->intOrNull($mapped['एकूण सभासद संख्या'] ?? null),
+                    'president' => $mapped['अध्यक्ष'] ?? null,
+                    'president_phone' => $mapped['अध्यक्ष मोबाईल'] ?? null,
+                    'president_whatsapp' => $mapped['अध्यक्ष व्हॉट्सअप'] ?? null,
+                    'president_email' => $mapped['अध्यक्ष इमेल'] ?? null,
+                    'secretary' => $mapped['सचिव'] ?? null,
+                    'secretary_phone' => $mapped['सचिव मोबाईल'] ?? null,
+                    'secretary_whatsapp' => $mapped['सचिव व्हॉट्सअप'] ?? null,
+                    'secretary_email' => $mapped['सचिव इमेल'] ?? null,
+                    'created_by' => Auth::id(),
                     'created_date' => now(),
-                ];
+                ], $numbering));
 
-                // Basic validation per row (you can extend)
-                if (empty($sanghData['name_of_sangh'])) {
-                    $errors[] = "Row {$row}: Name of Sangh is required. Skipped.";
-                    continue;
-                }
-
-                Sangh::create($sanghData);
+                $this->ensureRenewalsForSangh($sangh);
             }
 
-            fclose($handle);
+            $this->importRenewals($renewalRows);
+        });
 
-            if (!empty($errors)) {
-                return redirect()->back()->with('import_errors', $errors)->with('success', 'Import finished with some skipped rows.');
-            }
-
-            return redirect()->route('sanghs.index')->with('success', 'CSV imported successfully.');
+        if (!empty($importErrors)) {
+            return redirect()->route('sanghs.index')
+                ->with('import_errors', $importErrors)
+                ->with('success', 'Import completed with skipped rows.');
         }
 
-        return redirect()->back()->with('error', 'Could not open the CSV file.');
+        return redirect()->route('sanghs.index')->with('success', 'Excel imported successfully.');
     }
 
-    private function parseDateIfPresent($value)
-    {
-        if (empty($value)) return null;
-        $value = trim($value);
-        // Try common formats
-        $timestamp = strtotime($value);
-        if ($timestamp !== false) {
-            return date('Y-m-d', $timestamp);
-        }
-        return null;
-    }
-
-    /**
-     * Download CSV template
-     */
     public function downloadTemplate()
     {
-        $columns = [
-            'Sangh Sr. No', // optional, will be ignored while importing because we generate dynamically
-            'Name of Sangh',
-            'District',
-            'District No.',
-            'Taluka',
-            'City',
-            'Division',
-            'Division No.',
-            'Total M/F',
-            'Date (Regulatory Board / Annual / Special Meeting )',
-            'Receipt No.',
-            'Receipt Date',
-            'Receipt Amout',
-            'Division Membership No.',
-            'Male',
-            'Female',
-            'Total Members',
-            'Address',
-            'President',
-            'Tel. No.',
-            'Alt Tel. No.',
-            'Email ID',
-            'Secretary',
-            // Created By/Date not necessary in upload
-        ];
+        $sampleMaster = [[
+            '',
+            'MM/1',
+            'MO/1',
+            date('Y'),
+            'दत्तात्रय ज्ये.ना.सं',
+            'R',
+            'G',
+            'Mumbai Metropolitan',
+            'Mumbai',
+            'Taluka Name',
+            'Village Name',
+            'Mumbai',
+            'Mukkam Post',
+            '400001',
+            '402/A, Building Name',
+            'Main Road',
+            'Ward 3',
+            25,
+            22,
+            47,
+            'President Name',
+            '9000000001',
+            '9000000001',
+            'president@example.com',
+            'Secretary Name',
+            '9000000002',
+            '9000000002',
+            'secretary@example.com',
+        ]];
 
-        $response = new StreamedResponse(function() use ($columns) {
-            $handle = fopen('php://output', 'w');
-            fputcsv($handle, $columns);
-            // sample row (optional)
-            fputcsv($handle, [
-                '', 'Example Sangh', 'Pune', '12', 'Haveli', 'Pune', 'West Division', '5', '100/90', '2025-01-10',
-                'REC001', '2025-01-11', '1500.00', 'DMN1001', '60', '40', '100',
-                'Street 12, Pune', 'John Doe', '0123456789', '0987654321', 'example@example.com', 'Jane Doe'
-            ]);
-            fclose($handle);
-        }, 200, [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="sanghs_template.csv"',
-        ]);
+        $sampleRenewal = [[
+            'MM/1',
+            date('Y'),
+            'FES-001',
+            now()->format('Y-m-d'),
+            25,
+            22,
+            47,
+            500,
+            250,
+            0,
+            750,
+            'Paid',
+        ]];
 
-        return $response;
+        $export = new \App\Exports\SanghWorkbookExport(
+            self::IMPORT_HEADERS,
+            $sampleMaster,
+            self::RENEWAL_HEADERS,
+            $sampleRenewal
+        );
+
+        return Excel::download($export, 'sangh_template.xlsx');
     }
 
 
@@ -348,7 +384,7 @@ class SanghController extends Controller
         $sangh->load('creator');
 
         // Use a dedicated PDF view to avoid including action buttons etc.
-        $pdf = \PDF::loadView('sanghs.pdf', compact('sangh'))
+        $pdf = app('dompdf.wrapper')->loadView('sanghs.pdf', compact('sangh'))
                    ->setPaper('a4', 'portrait');
 
         // Stream as download
@@ -364,7 +400,7 @@ class SanghController extends Controller
     {
         $sangh->load('creator');
 
-        $pdf = \PDF::loadView('sanghs.pdf', compact('sangh'))
+        $pdf = app('dompdf.wrapper')->loadView('sanghs.pdf', compact('sangh'))
                    ->setPaper('a4', 'portrait');
 
         $filename = 'sangh_' . $sangh->sangh_sr_no . '_' . now()->format('Ymd_His') . '.pdf';
@@ -375,7 +411,7 @@ class SanghController extends Controller
         Storage::disk('public')->put($path, $pdf->output());
 
         // Public URL (needs `php artisan storage:link` once)
-        $url = Storage::disk('public')->url($path);
+        $url = asset('storage/' . $path);
 
         // Option 1: redirect back with link
         return redirect()->back()->with('pdf_saved', $url);
@@ -407,6 +443,280 @@ class SanghController extends Controller
         });
         $path = $matched[0];
 
-        return Storage::disk('public')->download($path);
+        $absolutePath = Storage::disk('public')->path($path);
+        return response()->download($absolutePath);
+    }
+
+    public function downloadReceiptPdf(Sangh $sangh, int $year)
+    {
+        $renewal = SanghRenewal::query()
+            ->where('sangh_id', $sangh->id)
+            ->where('renewal_year', $year)
+            ->first();
+
+        if (!$renewal || !$renewal->is_paid) {
+            return redirect()->route('sanghs.show', $sangh)->with('error', 'Receipt not available or not paid.');
+        }
+
+        $pdf = app('dompdf.wrapper');
+        $pdf->loadView('sanghs.receipt-pdf', compact('sangh', 'renewal'))
+            ->setPaper('a4')
+            ->setOption(['dpi' => 150, 'defaultFont' => 'Dejavu Sans']);
+
+        return $pdf->download('Receipt_' . str_replace(' ', '_', $sangh->name_of_sangh) . '_' . $year . '.pdf');
+    }
+
+    public function updateRenewal(Request $request, Sangh $sangh, int $year)
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:paid,unpaid',
+            'feskcom_receipt_no' => 'nullable|string|max:255',
+            'feskcom_receipt_date' => 'nullable|date',
+            'male_members' => 'nullable|integer|min:0',
+            'female_members' => 'nullable|integer|min:0',
+            'total_members' => 'nullable|integer|min:0',
+            'annual_fee' => 'nullable|numeric|min:0',
+            'development_fee' => 'nullable|numeric|min:0',
+            'penalty_fee' => 'nullable|numeric|min:0',
+            'paid_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        $renewal = SanghRenewal::query()->firstOrCreate(
+            ['sangh_id' => $sangh->id, 'renewal_year' => $year],
+            ['is_paid' => false]
+        );
+
+        $renewal->update([
+            'is_paid' => $validated['status'] === 'paid',
+            'feskcom_receipt_no' => $validated['feskcom_receipt_no'] ?? null,
+            'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
+            'male_members' => $validated['male_members'] ?? null,
+            'female_members' => $validated['female_members'] ?? null,
+            'total_members' => $validated['total_members'] ?? null,
+            'annual_fee' => $validated['annual_fee'] ?? null,
+            'development_fee' => $validated['development_fee'] ?? null,
+            'penalty_fee' => $validated['penalty_fee'] ?? null,
+            'paid_amount' => $validated['paid_amount'] ?? null,
+        ]);
+
+        return redirect()->route('sanghs.show', $sangh)->with('success', 'Renewal updated.');
+    }
+
+    public function seedPlaceholders()
+    {
+        $target = 6676;
+        $currentCount = Sangh::count();
+
+        if ($currentCount >= $target) {
+            return redirect()->route('sanghs.index')->with('success', 'Placeholders already available.');
+        }
+
+        DB::transaction(function () use ($target, $currentCount) {
+            for ($i = $currentCount + 1; $i <= $target; $i++) {
+                $code = 'SG';
+                Sangh::create([
+                    'sangh_sr_no' => $i,
+                    'unique_ref_no' => $code . '/' . $i,
+                    'pradeshik_sr_no' => $i,
+                    'pradeshik_ref_no' => $code . '/' . $i,
+                    'district_sr_no' => $i,
+                    'district_ref_no' => $code . '/' . $i,
+                    'name_of_sangh' => null,
+                    'created_by' => Auth::id(),
+                    'created_date' => now(),
+                ]);
+            }
+        });
+
+        return redirect()->route('sanghs.index')->with('success', 'Placeholder Sangh rows added till 6676.');
+    }
+
+    private function rules(bool $isCreate = true): array
+    {
+        $nameRule = $isCreate ? 'required|string|max:255' : 'nullable|string|max:255';
+
+        return [
+            'name_of_sangh' => $nameRule,
+            'registration_year' => 'nullable|integer|min:1900|max:' . date('Y'),
+            'category_code' => 'nullable|string|in:R,U,A',
+            'sangh_type_code' => 'nullable|string|in:G,F',
+            'pradeshik_vibhag' => 'nullable|string|max:255',
+            'pradeshik_vibhag_code' => 'nullable|string|max:10',
+            'district' => 'nullable|string|max:255',
+            'district_code' => 'nullable|string|max:10',
+            'taluka' => 'nullable|string|max:255',
+            'village' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:255',
+            'mukkam_post' => 'nullable|string|max:255',
+            'pincode' => 'nullable|string|max:20',
+            'address' => 'nullable|string',
+            'road_path' => 'nullable|string|max:255',
+            'ward_section' => 'nullable|string|max:255',
+            'male' => 'nullable|integer|min:0',
+            'female' => 'nullable|integer|min:0',
+            'total_members' => 'nullable|integer|min:0',
+            'president' => 'nullable|string|max:255',
+            'president_phone' => 'nullable|string|max:30',
+            'president_whatsapp' => 'nullable|string|max:30',
+            'president_email' => 'nullable|email|max:255',
+            'secretary' => 'nullable|string|max:255',
+            'secretary_phone' => 'nullable|string|max:30',
+            'secretary_whatsapp' => 'nullable|string|max:30',
+            'secretary_email' => 'nullable|email|max:255',
+            'email' => 'nullable|email|max:255',
+        ];
+    }
+
+    private function normalizePayload(array $validated): array
+    {
+        return [
+            'registration_year' => $validated['registration_year'] ?? null,
+            'name_of_sangh' => $validated['name_of_sangh'] ?? null,
+            'category_code' => $validated['category_code'] ?? null,
+            'sangh_type_code' => $validated['sangh_type_code'] ?? null,
+            'pradeshik_vibhag' => $validated['pradeshik_vibhag'] ?? null,
+            'pradeshik_vibhag_code' => $validated['pradeshik_vibhag_code'] ?? null,
+            'district' => $validated['district'] ?? null,
+            'district_code' => $validated['district_code'] ?? null,
+            'taluka' => $validated['taluka'] ?? null,
+            'village' => $validated['village'] ?? null,
+            'city' => $validated['city'] ?? null,
+            'mukkam_post' => $validated['mukkam_post'] ?? null,
+            'pincode' => $validated['pincode'] ?? null,
+            'address' => $validated['address'] ?? null,
+            'road_path' => $validated['road_path'] ?? null,
+            'ward_section' => $validated['ward_section'] ?? null,
+            'male' => $validated['male'] ?? null,
+            'female' => $validated['female'] ?? null,
+            'total_members' => $validated['total_members'] ?? null,
+            'president' => $validated['president'] ?? null,
+            'president_phone' => $validated['president_phone'] ?? null,
+            'president_whatsapp' => $validated['president_whatsapp'] ?? null,
+            'president_email' => $validated['president_email'] ?? null,
+            'secretary' => $validated['secretary'] ?? null,
+            'secretary_phone' => $validated['secretary_phone'] ?? null,
+            'secretary_whatsapp' => $validated['secretary_whatsapp'] ?? null,
+            'secretary_email' => $validated['secretary_email'] ?? null,
+            'email' => $validated['email'] ?? null,
+        ];
+    }
+
+    private function makeNumbering(?string $vibhag, ?string $district, ?string $vibhagCodeInput, ?string $districtCodeInput): array
+    {
+        $nextGlobal = ((int) Sangh::max('sangh_sr_no')) + 1;
+
+        $vibhagCode = $this->normalizeCode($vibhagCodeInput ?: $vibhag);
+        $districtCode = $this->normalizeCode($districtCodeInput ?: $district);
+
+        $nextVibhag = ((int) Sangh::query()
+            ->where('pradeshik_vibhag', $vibhag)
+            ->max('pradeshik_sr_no')) + 1;
+
+        $nextDistrict = ((int) Sangh::query()
+            ->where('district', $district)
+            ->max('district_sr_no')) + 1;
+
+        return [
+            'sangh_sr_no' => $nextGlobal,
+            'unique_ref_no' => $vibhagCode . '/' . $nextGlobal,
+            'pradeshik_sr_no' => $nextVibhag,
+            'pradeshik_ref_no' => $vibhagCode . '/' . $nextVibhag,
+            'district_sr_no' => $nextDistrict,
+            'district_ref_no' => $districtCode . '/' . $nextDistrict,
+            'pradeshik_vibhag_code' => $vibhagCode,
+            'district_code' => $districtCode,
+        ];
+    }
+
+    private function normalizeCode(?string $value): string
+    {
+        $clean = strtoupper(preg_replace('/[^A-Z]/', '', Str::ascii((string) $value)));
+        return $clean !== '' ? Str::substr($clean, 0, 3) : 'SG';
+    }
+
+    private function ensureRenewalsForSangh(Sangh $sangh): void
+    {
+        $currentYear = (int) date('Y');
+        for ($year = 2010; $year <= $currentYear; $year++) {
+            SanghRenewal::query()->firstOrCreate(
+                ['sangh_id' => $sangh->id, 'renewal_year' => $year],
+                ['is_paid' => false]
+            );
+        }
+    }
+
+    private function mapRowByHeader(array $header, array $row): array
+    {
+        $mapped = [];
+        foreach ($header as $index => $head) {
+            $mapped[trim((string) $head)] = $row[$index] ?? null;
+        }
+        return $mapped;
+    }
+
+    private function intOrNull($value): ?int
+    {
+        return is_numeric($value) ? (int) $value : null;
+    }
+
+    private function codeChar($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return strtoupper(Str::substr(trim((string) $value), 0, 1));
+    }
+
+    private function extractCodePart($value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+        $parts = explode('/', (string) $value);
+        return trim($parts[0] ?? '');
+    }
+
+    private function importRenewals(array $renewalRows): void
+    {
+        if (count($renewalRows) < 2) {
+            return;
+        }
+
+        $header = array_map('trim', $renewalRows[0]);
+        for ($i = 1; $i < count($renewalRows); $i++) {
+            $row = $renewalRows[$i];
+            if (!count(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
+                continue;
+            }
+
+            $mapped = $this->mapRowByHeader($header, $row);
+            $uniqueRef = trim((string) ($mapped['Unique संघाचा अनु क्र.'] ?? ''));
+            $year = $this->intOrNull($mapped['वर्ष'] ?? null);
+
+            if ($uniqueRef === '' || $year === null) {
+                continue;
+            }
+
+            $sangh = Sangh::query()->where('unique_ref_no', $uniqueRef)->first();
+            if (!$sangh) {
+                continue;
+            }
+
+            SanghRenewal::query()->updateOrCreate(
+                ['sangh_id' => $sangh->id, 'renewal_year' => $year],
+                [
+                    'is_paid' => strtolower((string) ($mapped['स्थिती'] ?? '')) === 'paid',
+                    'feskcom_receipt_no' => $mapped['फेस्कॉम पावती क्र.'] ?? null,
+                    'feskcom_receipt_date' => $mapped['फेस्कॉम पावती दिनांक'] ?? null,
+                    'male_members' => $this->intOrNull($mapped['पुरुष सभासद संख्या'] ?? null),
+                    'female_members' => $this->intOrNull($mapped['महिला सभासद संख्या'] ?? null),
+                    'total_members' => $this->intOrNull($mapped['एकूण सभासद संख्या'] ?? null),
+                    'annual_fee' => is_numeric($mapped['वार्षिक शुल्क'] ?? null) ? $mapped['वार्षिक शुल्क'] : null,
+                    'development_fee' => is_numeric($mapped['विकास निधी शुल्क'] ?? null) ? $mapped['विकास निधी शुल्क'] : null,
+                    'penalty_fee' => is_numeric($mapped['दंड शुल्क'] ?? null) ? $mapped['दंड शुल्क'] : null,
+                    'paid_amount' => is_numeric($mapped['पावती रक्कम (भरलेली)'] ?? null) ? $mapped['पावती रक्कम (भरलेली)'] : null,
+                ]
+            );
+        }
     }
 }

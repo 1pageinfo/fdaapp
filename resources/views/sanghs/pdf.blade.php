@@ -21,33 +21,34 @@
     <div class="section">
         <table>
             <tr><th>Fields</th><th>Details</th></tr>
-             <tr><td>Sangh Sr. No</td><td>{{ $sangh->sangh_sr_no }}</td></tr>
-            <tr><td>Name of Sangh</td><td>{{ $sangh->name_of_sangh }}</td></tr>
-            <tr><td>District</td><td>{{ $sangh->district }}</td></tr>
-            <tr><td>District No.</td><td>{{ $sangh->district_no }}</td></tr>
-            <tr><td>Taluka</td><td>{{ $sangh->taluka }}</td></tr>
-            <tr><td>City</td><td>{{ $sangh->city }}</td></tr>
-            <tr><td>Division</td><td>{{ $sangh->division }}</td></tr>
-            <tr><td>Division No.</td><td>{{ $sangh->division_no }}</td></tr>
-            <tr><td>Total M/F</td><td>{{ $sangh->total_m_f }}</td></tr>
-
-            <tr><td>Meeting Date</td><td>{{ $sangh->date_meeting?->format('Y-m-d') }}</td></tr>
-            <tr><td>Receipt No.</td><td>{{ $sangh->receipt_no }}</td></tr>
-            <tr><td>Receipt Date</td><td>{{ $sangh->receipt_date?->format('Y-m-d') }}</td></tr>
-            <tr><td>Receipt Amount</td><td>{{ $sangh->receipt_amount }}</td></tr>
-            <tr><td>Division Membership No.</td><td>{{ $sangh->division_membership_no }}</td></tr>
-
-            <tr><td>Male</td><td>{{ $sangh->male }}</td></tr>
-            <tr><td>Female</td><td>{{ $sangh->female }}</td></tr>
-            <tr><td>Total Members</td><td>{{ $sangh->total_members }}</td></tr>
-
-            <tr><td>President</td><td>{{ $sangh->president }}</td></tr>
-            <tr><td>Secretary</td><td>{{ $sangh->secretary }}</td></tr>
-            <tr><td>Tel No.</td><td>{{ $sangh->tel_no }}</td></tr>
-            <tr><td>Alt Tel No.</td><td>{{ $sangh->alt_tel_no }}</td></tr>
-            <tr><td>Email</td><td>{{ $sangh->email }}</td></tr>
-
-            <tr><td>Address</td><td>{{ $sangh->address }}</td></tr>
+            <tr><td>Unique संघाचा अनु क्र.</td><td>{{ $sangh->unique_ref_no }}</td></tr>
+            <tr><td>प्रादेशिक विभागातील संघाचा अनु क्र.</td><td>{{ $sangh->pradeshik_ref_no }}</td></tr>
+            <tr><td>जिल्हा मधे संघाचा अनु. क्र.</td><td>{{ $sangh->district_ref_no }}</td></tr>
+            <tr><td>वर्ष</td><td>{{ $sangh->registration_year }}</td></tr>
+            <tr><td>संघाचे नाव</td><td>{{ $sangh->name_of_sangh }}</td></tr>
+            <tr><td>श्रेणी</td><td>{{ $sangh->category_code }}</td></tr>
+            <tr><td>संघ प्रकार</td><td>{{ $sangh->sangh_type_code }}</td></tr>
+            <tr><td>प्रादेशिक विभाग</td><td>{{ $sangh->pradeshik_vibhag }}</td></tr>
+            <tr><td>जिल्हा</td><td>{{ $sangh->district }}</td></tr>
+            <tr><td>तालुका</td><td>{{ $sangh->taluka }}</td></tr>
+            <tr><td>गाव</td><td>{{ $sangh->village }}</td></tr>
+            <tr><td>शहर</td><td>{{ $sangh->city }}</td></tr>
+            <tr><td>मुक्काम पोस्ट</td><td>{{ $sangh->mukkam_post }}</td></tr>
+            <tr><td>पिनकोड</td><td>{{ $sangh->pincode }}</td></tr>
+            <tr><td>पत्ता</td><td>{{ $sangh->address }}</td></tr>
+            <tr><td>रस्ता / पथ</td><td>{{ $sangh->road_path }}</td></tr>
+            <tr><td>विभाग/प्रभाग</td><td>{{ $sangh->ward_section }}</td></tr>
+            <tr><td>पुरुष सभासद संख्या</td><td>{{ $sangh->male }}</td></tr>
+            <tr><td>महिला सभासद संख्या</td><td>{{ $sangh->female }}</td></tr>
+            <tr><td>एकूण सभासद संख्या</td><td>{{ $sangh->total_members }}</td></tr>
+            <tr><td>अध्यक्ष</td><td>{{ $sangh->president }}</td></tr>
+            <tr><td>अध्यक्ष मोबाईल</td><td>{{ $sangh->president_phone }}</td></tr>
+            <tr><td>अध्यक्ष व्हॉट्सअप</td><td>{{ $sangh->president_whatsapp }}</td></tr>
+            <tr><td>अध्यक्ष इमेल</td><td>{{ $sangh->president_email }}</td></tr>
+            <tr><td>सचिव</td><td>{{ $sangh->secretary }}</td></tr>
+            <tr><td>सचिव मोबाईल</td><td>{{ $sangh->secretary_phone }}</td></tr>
+            <tr><td>सचिव व्हॉट्सअप</td><td>{{ $sangh->secretary_whatsapp }}</td></tr>
+            <tr><td>सचिव इमेल</td><td>{{ $sangh->secretary_email }}</td></tr>
 
             <tr><td>Created By</td><td>{{ $sangh->creator->name ?? $sangh->created_by }}</td></tr>
             <tr><td>Created Date</td><td>{{ $sangh->created_date?->format('Y-m-d H:i:s') ?? $sangh->created_at->format('Y-m-d H:i:s') }}</td></tr>
