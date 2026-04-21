@@ -84,13 +84,14 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-1">
-                        <label class="form-label fw-bold small">Month</label>
-                        <input type="number" min="1" max="12" name="month" value="{{ request('month') }}" class="form-control form-control-sm" placeholder="1-12">
-                    </div>
-                    <div class="col-md-1">
+                    <div class="col-md-2">
                         <label class="form-label fw-bold small">Year</label>
-                        <input type="number" min="2010" max="{{ date('Y') }}" name="year" value="{{ request('year') }}" class="form-control form-control-sm">
+                        <select name="year" class="form-select form-select-sm">
+                            <option value="">All Years</option>
+                            @foreach($years as $yr)
+                                <option value="{{ $yr }}" @selected(request('year') == $yr)>{{ $yr }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <div class="col-md-2">
                         <label class="form-label fw-bold small">From Date</label>
@@ -100,18 +101,27 @@
                         <label class="form-label fw-bold small">To Date</label>
                         <input type="date" name="to_date" value="{{ request('to_date') }}" class="form-control form-control-sm">
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">Renewal Year</label>
-                        <select name="renewal_year" class="form-select form-select-sm">
-                            <option value="">All Years</option>
-                            @foreach($years as $yr)
-                                <option value="{{ $yr }}" @selected(request('renewal_year') == $yr)>{{ $yr }}</option>
-                            @endforeach
-                        </select>
-                    </div>
                 </div>
 
                 <div class="row">
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small">Register Receipts</label>
+                        <select name="register_receipt_year" class="form-select form-select-sm">
+                            <option value="">All Years</option>
+                            @foreach($registerReceiptYears as $yr)
+                                <option value="{{ $yr }}" @selected(request('register_receipt_year') == $yr)>{{ $yr }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small">Renewal Receipts</label>
+                        <select name="renewal_receipt_year" class="form-select form-select-sm">
+                            <option value="">All Years</option>
+                            @foreach($renewalReceiptYears as $yr)
+                                <option value="{{ $yr }}" @selected(request('renewal_receipt_year') == $yr)>{{ $yr }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div class="col-md-2">
                         <label class="form-label fw-bold small">Payment Status</label>
                         <select name="payment_status" class="form-select form-select-sm">
@@ -120,7 +130,7 @@
                             <option value="unpaid" @selected(request('payment_status') == 'unpaid')>Unpaid</option>
                         </select>
                     </div>
-                    <div class="col-md-10 d-flex align-items-end gap-2">
+                    <div class="col-md-6 d-flex align-items-end gap-2">
                         <button type="submit" class="btn btn-primary btn-sm">
                             <i class="fa fa-search"></i> Apply Filters
                         </button>

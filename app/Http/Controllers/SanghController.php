@@ -79,10 +79,6 @@ class SanghController extends Controller
             $query->where('registration_year', (int) $request->input('year'));
         }
 
-        if ($request->filled('month')) {
-            $query->whereMonth('created_at', (int) $request->input('month'));
-        }
-
         if ($request->filled('from_date')) {
             $query->whereDate('created_at', '>=', $request->input('from_date'));
         }
@@ -91,22 +87,40 @@ class SanghController extends Controller
             $query->whereDate('created_at', '<=', $request->input('to_date'));
         }
 
-        if ($request->filled('renewal_year') && $request->filled('payment_status')) {
+        // Register Receipts filter (Year with payment status)
+        if ($request->filled('register_receipt_year')) {
+            $isPaid = $request->input('payment_status') === 'paid';
+            $query->whereHas('registrationReceipt', function ($receiptQuery) use ($request, $isPaid) {
+                $receiptQuery->where('receipt_year', (int) $request->input('register_receipt_year'));
+                if ($request->filled('payment_status')) {
+                    $receiptQuery->where('is_paid', $isPaid);
+                }
+            });
+        }
+
+        // Renewal Receipts filter (Year with payment status)
+        if ($request->filled('renewal_receipt_year')) {
             $isPaid = $request->input('payment_status') === 'paid';
             $query->whereHas('renewals', function ($renewalQuery) use ($request, $isPaid) {
-                $renewalQuery
-                    ->where('renewal_year', (int) $request->input('renewal_year'))
-                    ->where('is_paid', $isPaid);
+                $renewalQuery->where('renewal_year', (int) $request->input('renewal_receipt_year'));
+                if ($request->filled('payment_status')) {
+                    $renewalQuery->where('is_paid', $isPaid);
+                }
             });
         }
 
         $sanghs = $query->orderBy('sangh_sr_no', 'asc')->paginate(15)->withQueryString();
 
+        // Get filter options from distinct data
         $vibhags = Sangh::query()->whereNotNull('pradeshik_vibhag')->distinct()->orderBy('pradeshik_vibhag')->pluck('pradeshik_vibhag');
         $districts = Sangh::query()->whereNotNull('district')->distinct()->orderBy('district')->pluck('district');
         $years = range((int) date('Y'), 1970);
+        
+        // Get unique receipt years (excluding sangh data that has no receipt)
+        $registerReceiptYears = SanghRegistrationReceipt::query()->distinct()->orderBy('receipt_year', 'desc')->pluck('receipt_year');
+        $renewalReceiptYears = SanghRenewal::query()->distinct()->orderBy('renewal_year', 'desc')->pluck('renewal_year');
 
-        return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'years'));
+        return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'years', 'registerReceiptYears', 'renewalReceiptYears'));
     }
 
     public function create()
