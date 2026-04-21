@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -589,7 +590,7 @@ class SanghController extends Controller
             'village' => 'nullable|string|max:255',
             'city' => 'nullable|string|max:255',
             'mukkam_post' => 'nullable|string|max:255',
-            'pincode' => 'nullable|string|max:20',
+            'pincode' => ['nullable', 'string', 'size:6', Rule::in(config('pincodes.allowed', []))],
             'address' => 'nullable|string',
             'road_path' => 'nullable|string|max:255',
             'ward_section' => 'nullable|string|max:255',

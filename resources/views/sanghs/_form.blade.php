@@ -179,7 +179,20 @@
 <div class="form-row">
     <div class="form-group col-md-2">
         <label>पिनकोड</label>
-        <input type="text" name="pincode" class="form-control" value="{{ old('pincode', $sangh->pincode ?? '') }}">
+        @php($savedPincode = (string) old('pincode', $sangh->pincode ?? ''))
+        <input type="hidden" name="pincode" id="pincode" value="{{ $savedPincode }}">
+        <div style="position:relative;">
+            <input
+                type="text"
+                id="pincode_search"
+                class="form-control"
+                value="{{ $savedPincode }}"
+                placeholder="Search पिनकोड"
+                inputmode="numeric"
+                autocomplete="off"
+            >
+            <ul id="pincode_results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:1050;background:#fff;border:1px solid #ced4da;border-top:none;border-radius:0 0 4px 4px;max-height:200px;overflow-y:auto;padding:0;margin:0;list-style:none;"></ul>
+        </div>
     </div>
     <div class="form-group col-md-5">
         <label>पत्ता</label>
@@ -313,6 +326,11 @@
         const districtCodeInput = document.getElementById('district_code');
         const talukaSelect      = document.getElementById('taluka');
         const savedTaluka       = @json(old('taluka', $sangh->taluka ?? ''));
+        const pincodeAllowed    = @json(config('pincodes.allowed', []));
+        const pincodeSet        = new Set(pincodeAllowed.map(String));
+        const pincodeField      = document.getElementById('pincode');
+        const pincodeSearch     = document.getElementById('pincode_search');
+        const pincodeResults    = document.getElementById('pincode_results');
 
         // Collect all district options (except the blank first one) into memory once
         const allDistrictOptions = Array.from(districtSelect.options).filter(o => o.value !== '');
@@ -363,6 +381,71 @@
             syncCode(districtSelect, districtCodeInput);
             populateTalukas(this.value);
         });
+
+        function renderPincodeResults(query) {
+            if (!pincodeResults) return;
+            const q = (query || '').trim();
+            pincodeResults.innerHTML = '';
+            if (q === '') { pincodeResults.style.display = 'none'; return; }
+            const matches = pincodeAllowed.filter(function(pin) {
+                return pin.indexOf(q) === 0 || pin.indexOf(q) > -1;
+            }).slice(0, 50);
+            if (!matches.length) { pincodeResults.style.display = 'none'; return; }
+            matches.forEach(function(pin) {
+                const li = document.createElement('li');
+                li.textContent = pin;
+                li.dataset.pin = pin;
+                li.style.cssText = 'padding:6px 12px;cursor:pointer;font-size:14px;';
+                li.addEventListener('mouseenter', function() { this.style.background = '#007bff'; this.style.color = '#fff'; });
+                li.addEventListener('mouseleave', function() { this.style.background = ''; this.style.color = ''; });
+                li.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    applyPincodeSelection(this.dataset.pin);
+                    pincodeResults.style.display = 'none';
+                });
+                pincodeResults.appendChild(li);
+            });
+            pincodeResults.style.display = 'block';
+        }
+
+        function applyPincodeSelection(pin) {
+            if (!pincodeSet.has(String(pin))) { pincodeField.value = ''; return; }
+            pincodeField.value = pin;
+            pincodeSearch.value = pin;
+        }
+
+        if (pincodeSearch && pincodeField && pincodeResults) {
+            pincodeSearch.addEventListener('input', function () {
+                const typed = this.value.replace(/\D/g, '');
+                this.value = typed;
+                if (typed.length === 6 && pincodeSet.has(typed)) {
+                    pincodeField.value = typed;
+                } else if (typed !== pincodeField.value) {
+                    pincodeField.value = '';
+                }
+                renderPincodeResults(typed);
+            });
+
+            pincodeSearch.addEventListener('focus', function () {
+                if (this.value) renderPincodeResults(this.value);
+            });
+
+            pincodeSearch.addEventListener('blur', function () {
+                setTimeout(function() { pincodeResults.style.display = 'none'; }, 150);
+            });
+
+            const formEl = pincodeField.closest('form');
+            if (formEl) {
+                formEl.addEventListener('submit', function (e) {
+                    const val = (pincodeField.value || '').trim();
+                    if (val !== '' && !pincodeSet.has(val)) {
+                        e.preventDefault();
+                        alert('Please select a valid पिनकोड from search results.');
+                        pincodeSearch.focus();
+                    }
+                });
+            }
+        }
 
         // Run on page load to reflect existing saved values
         syncCode(vibhagSelect, vibhagCodeInput);
