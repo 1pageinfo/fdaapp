@@ -11,6 +11,7 @@ class SanghRegistrationReceipt extends Model
 
     protected $fillable = [
         'sangh_id',
+        'user_id',
         'receipt_year',
         'is_paid',
         'feskcom_receipt_no',
@@ -37,5 +38,10 @@ class SanghRegistrationReceipt extends Model
     public function sangh()
     {
         return $this->belongsTo(Sangh::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }
