@@ -196,24 +196,71 @@
 
 <script>
     (function () {
-        const mapCode = (selectId, inputId) => {
-            const select = document.getElementById(selectId);
-            const input = document.getElementById(inputId);
-
-            if (!select || !input) {
-                return;
-            }
-
-            const sync = () => {
-                const option = select.options[select.selectedIndex];
-                input.value = option ? (option.getAttribute('data-code') || '') : '';
-            };
-
-            select.addEventListener('change', sync);
-            sync();
+        // Vibhag → array of district values that should be visible
+        const vibhagDistrictMap = {
+            'अहिल्यानगर':      ['अहिल्यानगर'],
+            'बुलढाणा':         ['बुलढाणा'],
+            'पूर्व.विदर्भ':    ['भंडारा', 'नागपूर', 'वर्धा'],
+            'खानदेश':          ['धुळे', 'जळगाव', 'नंदुरबार'],
+            'कोकण':            ['ठाणे', 'पालघर', 'रायगड', 'रत्नागिरी', 'सिंधुदुर्ग'],
+            'कोल्हापूर':       ['कोल्हापूर'],
+            'मुंबई':           ['मुंबई सिटी', 'मुंबई इतर'],
+            'नाशिक':           ['नाशिक'],
+            'उत्तर.मराठवाडा': ['संभाजी नगर', 'हिंगोली', 'जालना', 'नांदेड'],
+            'पुणे':            ['पुणे', 'सातारा', 'सोलापूर'],
+            'सांगली':          ['सांगली'],
+            'दक्षिण.मराठवाडा':['बीड', 'लातूर', 'धाराशिव', 'परभणी'],
+            'वनवैभव':          ['चंद्रपूर', 'गोंदिया', 'गडचिरोली'],
+            'पश्चिम.विदर्भ':  ['अकोला', 'अमरावती', 'वाशीम', 'यवतमाळ'],
         };
 
-        mapCode('pradeshik_vibhag', 'pradeshik_vibhag_code');
-        mapCode('district', 'district_code');
+        const vibhagSelect   = document.getElementById('pradeshik_vibhag');
+        const vibhagCodeInput = document.getElementById('pradeshik_vibhag_code');
+        const districtSelect  = document.getElementById('district');
+        const districtCodeInput = document.getElementById('district_code');
+
+        // Collect all district options (except the blank first one) into memory once
+        const allDistrictOptions = Array.from(districtSelect.options).filter(o => o.value !== '');
+
+        function filterDistricts(selectedVibhag) {
+            const allowed = vibhagDistrictMap[selectedVibhag] || null;
+
+            // Remove all non-blank options first
+            allDistrictOptions.forEach(o => o.remove());
+
+            // Re-insert only the allowed ones (or all if nothing matched)
+            const toShow = allowed
+                ? allDistrictOptions.filter(o => allowed.includes(o.value))
+                : allDistrictOptions;
+
+            toShow.forEach(o => districtSelect.appendChild(o));
+
+            // Reset district selection if current value is no longer in list
+            const currentValue = districtSelect.value;
+            const stillValid = toShow.some(o => o.value === currentValue);
+            if (!stillValid) {
+                districtSelect.value = '';
+                districtCodeInput.value = '';
+            }
+        }
+
+        function syncCode(select, input) {
+            const option = select.options[select.selectedIndex];
+            input.value = option ? (option.getAttribute('data-code') || '') : '';
+        }
+
+        vibhagSelect.addEventListener('change', function () {
+            syncCode(vibhagSelect, vibhagCodeInput);
+            filterDistricts(this.value);
+        });
+
+        districtSelect.addEventListener('change', function () {
+            syncCode(districtSelect, districtCodeInput);
+        });
+
+        // Run on page load to reflect existing saved values
+        syncCode(vibhagSelect, vibhagCodeInput);
+        filterDistricts(vibhagSelect.value);
+        syncCode(districtSelect, districtCodeInput);
     })();
 </script>
