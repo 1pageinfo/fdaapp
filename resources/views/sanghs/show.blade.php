@@ -4,6 +4,17 @@
 @php
     $sangh = $sangh ?? new \App\Models\Sangh();
     $display = fn ($v) => ($v === null || $v === '') ? '-' : $v;
+    $sangNumberParts = array_values(array_filter([
+        $sangh->unique_ref_no,
+        $sangh->pradeshik_ref_no,
+        $sangh->district_ref_no,
+    ], fn ($v) => $v !== null && $v !== ''));
+    $sangNumber = count($sangNumberParts) ? implode('/', $sangNumberParts) : null;
+    $registeredMale = is_numeric($sangh->male) ? (int) $sangh->male : null;
+    $registeredFemale = is_numeric($sangh->female) ? (int) $sangh->female : null;
+    $registeredTotal = ($registeredMale === null && $registeredFemale === null)
+        ? null
+        : (($registeredMale ?? 0) + ($registeredFemale ?? 0));
 
     $masterRows = [
         ['वर्ष', $sangh->registration_year],
@@ -60,6 +71,13 @@
         </div>
     @endif
 
+    <div class="card border-warning shadow-sm mb-3">
+        <div class="card-body py-2 px-3 bg-warning-subtle">
+            <small class="text-uppercase text-muted d-block">Sang Number</small>
+            <div class="fw-bold fs-5 text-dark">{{ $display($sangNumber) }}</div>
+        </div>
+    </div>
+
     <div class="row g-3 mb-3">
         <div class="col-md-4">
             <div class="card shadow-sm border-0 h-100">
@@ -107,9 +125,89 @@
 
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-header bg-light border-bottom d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fa fa-refresh text-primary"></i> Renewal Table (2010 to Current Year)</h5>
-            <small class="text-muted">{{ $renewals->count() }} years</small>
+            <h5 class="mb-0"><i class="fa fa-file-text-o text-primary"></i> New register Sangh Receipt</h5>
         </div>
+        @if($newRegisterReceipt)
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0 renewal-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Year</th>
+                        <th>Status</th>
+                        <th>फेस्कॉम पावती क्र.</th>
+                        <th>फेस्कॉम पावती दिनांक</th>
+                        <th>पुरुष</th>
+                        <th>महिला</th>
+                        <th>एकूण</th>
+                        <th>वार्षिक शुल्क</th>
+                        <th>विकास निधी शुल्क</th>
+                        <th>दंड शुल्क</th>
+                        <th>पावती रक्कम (भरलेली)</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <form id="newRegisterReceiptForm" action="{{ route('sanghs.registration_receipt.update', $sangh) }}" method="POST" class="d-none">
+                        @csrf
+                    </form>
+                    <tr>
+                        <td><strong>{{ $newRegisterReceipt->receipt_year ?? $registrationYear }}</strong></td>
+                        <td>
+                            <select name="status" class="form-select form-select-sm" form="newRegisterReceiptForm">
+                                <option value="paid" @selected($newRegisterReceipt->is_paid)>Paid</option>
+                                <option value="unpaid" @selected(!$newRegisterReceipt->is_paid)>Unpaid</option>
+                            </select>
+                        </td>
+                        <td><input type="text" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->feskcom_receipt_no ?: 'FSNEW/auto' }}" readonly disabled></td>
+                        <td><input type="date" name="feskcom_receipt_date" class="form-control form-control-sm" value="{{ optional($newRegisterReceipt->feskcom_receipt_date)->format('Y-m-d') }}" form="newRegisterReceiptForm"></td>
+                        <td><input type="number" class="form-control form-control-sm" value="{{ $registeredMale }}" readonly></td>
+                        <td><input type="number" class="form-control form-control-sm" value="{{ $registeredFemale }}" readonly></td>
+                        <td><input type="number" class="form-control form-control-sm" value="{{ $registeredTotal }}" readonly></td>
+                        <td><input type="number" name="annual_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->annual_fee }}" form="newRegisterReceiptForm"></td>
+                        <td><input type="number" name="development_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->development_fee }}" form="newRegisterReceiptForm"></td>
+                        <td><input type="number" name="penalty_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->penalty_fee }}" form="newRegisterReceiptForm"></td>
+                        <td><input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->paid_amount }}" form="newRegisterReceiptForm"></td>
+                        <td class="text-nowrap">
+                            <button type="submit" class="btn btn-sm btn-success mb-1" form="newRegisterReceiptForm">
+                                <i class="fa fa-save"></i> Save
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-info mb-1" data-bs-toggle="modal" data-bs-target="#receiptModalNewRegister">
+                                <i class="fa fa-receipt"></i> Receipt
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        @else
+            <div class="card-body text-muted">Set registration year in Sangh form to use New register Sangh Receipt.</div>
+        @endif
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-light border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h5 class="mb-0"><i class="fa fa-refresh text-primary"></i> Renewal Records</h5>
+                <small class="text-muted">{{ $renewals->count() }} record(s)</small>
+            </div>
+            @if(count($availableYears))
+            <form action="{{ route('sanghs.renewals.create', $sangh) }}" method="POST" class="d-flex align-items-center gap-2 no-print">
+                @csrf
+                <select name="renewal_year" class="form-select form-select-sm" style="width:120px;" required>
+                    <option value="">Year</option>
+                    @foreach($availableYears as $y)
+                        <option value="{{ $y }}">{{ $y }}</option>
+                    @endforeach
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary text-nowrap">
+                    <i class="fa fa-plus"></i> Create Record
+                </button>
+            </form>
+            @endif
+        </div>
+        @if($renewals->isEmpty())
+            <div class="card-body text-muted">No renewal records yet. Use "Create Record" above to add a year.</div>
+        @else
         <div class="table-responsive">
             <table class="table table-sm table-bordered align-middle mb-0 renewal-table">
                 <thead class="table-light">
@@ -140,7 +238,7 @@
                                         <option value="unpaid" @selected(!$renewal->is_paid)>Unpaid</option>
                                     </select>
                                 </td>
-                                <td><input type="text" name="feskcom_receipt_no" class="form-control form-control-sm" value="{{ $renewal->feskcom_receipt_no }}"></td>
+                                <td><input type="text" class="form-control form-control-sm bg-light" value="{{ $renewal->feskcom_receipt_no ?: 'FSREN/auto' }}" readonly disabled></td>
                                 <td><input type="date" name="feskcom_receipt_date" class="form-control form-control-sm" value="{{ optional($renewal->feskcom_receipt_date)->format('Y-m-d') }}"></td>
                                 <td><input type="number" name="male_members" min="0" class="form-control form-control-sm" value="{{ $renewal->male_members }}"></td>
                                 <td><input type="number" name="female_members" min="0" class="form-control form-control-sm" value="{{ $renewal->female_members }}"></td>
@@ -158,14 +256,120 @@
                                             <i class="fa fa-receipt"></i> Receipt
                                         </button>
                                     @endif
-                                </td>
                             </form>
+                            <form action="{{ route('sanghs.renewals.destroy', [$sangh, $renewal->renewal_year]) }}" method="POST" class="d-inline"
+                                  onsubmit="return confirm('Delete {{ $renewal->renewal_year }} renewal record?')">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn btn-sm btn-danger mb-1">
+                                    <i class="fa fa-trash"></i> Delete
+                                </button>
+                            </form>
+                                </td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
         </div>
+        @endif
     </div>
+
+    @if(!empty($newRegisterReceipt))
+        <div class="modal fade" id="receiptModalNewRegister" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">
+                            <i class="fa fa-receipt"></i> Receipt - {{ $newRegisterReceipt->receipt_year ?? $registrationYear }}
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="receipt-print border p-4 bg-white">
+                            <div class="text-center mb-4 pb-3 border-bottom">
+                                <h3 class="mb-1" style="font-weight: 700;">RECEIPT</h3>
+                                <p class="text-muted mb-0">New register Sangh Receipt</p>
+                                <p class="small text-muted mb-0">Federation of Senior Citizens Organisation of Maharashtra</p>
+                            </div>
+
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <p><strong>संघ नाव:</strong> {{ $display($sangh->name_of_sangh) }}</p>
+                                    <p><strong>Sang Number:</strong> {{ $display($sangNumber) }}</p>
+                                    <p><strong>जिल्हा:</strong> {{ $display($sangh->district) }}</p>
+                                </div>
+                                <div class="col-md-6 text-md-end">
+                                    <p><strong>वर्ष:</strong> {{ $newRegisterReceipt->receipt_year ?? $registrationYear }}</p>
+                                    <p><strong>दिनांक:</strong> {{ now()->format('d-m-Y') }}</p>
+                                    <p>
+                                        <strong>पावती स्थिति:</strong>
+                                        <span class="badge {{ $newRegisterReceipt->is_paid ? 'bg-success' : 'bg-warning text-dark' }}">
+                                            {{ $newRegisterReceipt->is_paid ? 'PAID' : 'UNPAID' }}
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive mb-4">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>विवरण</th>
+                                            <th class="text-end">रक्कम</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>वार्षिक शुल्क</td>
+                                            <td class="text-end">₹ {{ number_format($newRegisterReceipt->annual_fee ?? 0, 2) }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>विकास निधी शुल्क</td>
+                                            <td class="text-end">₹ {{ number_format($newRegisterReceipt->development_fee ?? 0, 2) }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>दंड शुल्क</td>
+                                            <td class="text-end">₹ {{ number_format($newRegisterReceipt->penalty_fee ?? 0, 2) }}</td>
+                                        </tr>
+                                        <tr class="table-warning">
+                                            <td><strong>एकूण रक्कम</strong></td>
+                                            <td class="text-end"><strong>₹ {{ number_format(($newRegisterReceipt->annual_fee ?? 0) + ($newRegisterReceipt->development_fee ?? 0) + ($newRegisterReceipt->penalty_fee ?? 0), 2) }}</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong class="text-success">भरलेली रक्कम</strong></td>
+                                            <td class="text-end"><strong class="text-success">₹ {{ number_format($newRegisterReceipt->paid_amount ?? 0, 2) }}</strong></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <p class="mb-1"><strong>फेस्कॉम पावती क्र.:</strong> {{ $display($newRegisterReceipt->feskcom_receipt_no) }}</p>
+                                    <p class="mb-1"><strong>पावती दिनांक:</strong> {{ optional($newRegisterReceipt->feskcom_receipt_date)->format('d-m-Y') ?? '-' }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="mb-1"><strong>पुरुष सदस्य:</strong> {{ $newRegisterReceipt->male_members ?? 0 }}</p>
+                                    <p class="mb-1"><strong>महिला सदस्य:</strong> {{ $newRegisterReceipt->female_members ?? 0 }}</p>
+                                    <p class="mb-1"><strong>एकूण सदस्य:</strong> {{ $newRegisterReceipt->total_members ?? 0 }}</p>
+                                </div>
+                            </div>
+
+                            <div class="text-center border-top pt-3">
+                                <p class="small text-muted mb-0">This is an automated receipt. Please retain for your records.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-info btn-sm" onclick="printReceipt('NewRegister')">
+                            <i class="fa fa-print"></i> Print Receipt
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
 
     @foreach($renewals as $renewal)
         <div class="modal fade" id="receiptModal{{ $renewal->renewal_year }}" tabindex="-1">
@@ -182,13 +386,13 @@
                             <div class="text-center mb-4 pb-3 border-bottom">
                                 <h3 class="mb-1" style="font-weight: 700;">RECEIPT</h3>
                                 <p class="text-muted mb-0">Sangh Renewal Receipt</p>
-                                <p class="small text-muted mb-0">FESCOM Organization</p>
+                                <p class="small text-muted mb-0">Federation of Senior Citizens Organisation of Maharashtra</p>
                             </div>
 
                             <div class="row mb-4">
                                 <div class="col-md-6">
                                     <p><strong>संघ नाव:</strong> {{ $display($sangh->name_of_sangh) }}</p>
-                                    <p><strong>संघाचा अनु क्र.:</strong> {{ $display($sangh->unique_ref_no) }}</p>
+                                    <p><strong>Sang Number:</strong> {{ $display($sangNumber) }}</p>
                                     <p><strong>जिल्हा:</strong> {{ $display($sangh->district) }}</p>
                                 </div>
                                 <div class="col-md-6 text-md-end">

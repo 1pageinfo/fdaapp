@@ -103,17 +103,62 @@
     </div>
 </div>
 
-<div class="form-row">
-    <div class="form-group col-md-3">
+<input
+    type="hidden"
+    name="address_type"
+    id="address_type"
+    value="{{ old('address_type', (!empty(optional($sangh)->address) || (!empty(optional($sangh)->city) && empty(optional($sangh)->village))) ? 'city' : 'village') }}"
+>
+
+{{-- Address Type Toggle --}}
+<div class="form-row mb-2">
+    <div class="col-12">
+        <label class="font-weight-bold mr-2">पत्ता प्रकार:</label>
+        <div class="btn-group" role="group">
+            <button type="button" id="btn_addr_village"
+                class="btn btn-sm {{ old('address_type', (!empty(optional($sangh)->address) || (!empty(optional($sangh)->city) && empty(optional($sangh)->village))) ? 'city' : 'village') === 'village' ? 'btn-primary' : 'btn-outline-primary' }}">
+                गाव / Village
+            </button>
+            <button type="button" id="btn_addr_city"
+                class="btn btn-sm {{ old('address_type', (!empty(optional($sangh)->address) || (!empty(optional($sangh)->city) && empty(optional($sangh)->village))) ? 'city' : 'village') === 'city' ? 'btn-primary' : 'btn-outline-primary' }}">
+                शहर / City
+            </button>
+        </div>
+    </div>
+</div>
+
+{{-- Village Address --}}
+<div id="section_village_addr" class="form-row" @if(old('address_type', (!empty(optional($sangh)->address) || (!empty(optional($sangh)->city) && empty(optional($sangh)->village))) ? 'city' : 'village') === 'city') style="display:none" @endif>
+    <div class="form-group col-md-4">
         <label>तालुका</label>
         <select name="taluka" id="taluka" class="form-control"><option value="">Select तालुका</option></select>
     </div>
-    <div class="form-group col-md-3">
+    <div class="form-group col-md-4">
         <label>गाव</label>
         <input type="text" name="village" class="form-control" value="{{ old('village', $sangh->village ?? '') }}">
     </div>
+    <div class="form-group col-md-4">
+        <label>मुक्काम पोस्ट</label>
+        <input type="text" name="mukkam_post" class="form-control" value="{{ old('mukkam_post', $sangh->mukkam_post ?? '') }}">
+    </div>
+</div>
+
+{{-- City Address --}}
+<div id="section_city_addr" class="form-row" @if(old('address_type', (!empty(optional($sangh)->address) || (!empty(optional($sangh)->city) && empty(optional($sangh)->village))) ? 'city' : 'village') === 'village') style="display:none" @endif>
+    <div class="form-group col-md-4">
+        <label>पत्ता / Address</label>
+        <input type="text" name="address" class="form-control" value="{{ old('address', $sangh->address ?? '') }}">
+    </div>
     <div class="form-group col-md-3">
-        <label>शहर</label>
+        <label>रस्ता / पथ / Road</label>
+        <input type="text" name="road_path" class="form-control" value="{{ old('road_path', $sangh->road_path ?? '') }}">
+    </div>
+    <div class="form-group col-md-2">
+        <label>विभाग / प्रभाग / Area</label>
+        <input type="text" name="ward_section" class="form-control" value="{{ old('ward_section', $sangh->ward_section ?? '') }}">
+    </div>
+    <div class="form-group col-md-3">
+        <label>शहर / City</label>
         @php($city = old('city', $sangh->city ?? ''))
         @php($cityOptions = [
             'मुंबई',
@@ -170,13 +215,10 @@
             @endforeach
         </select>
     </div>
-    <div class="form-group col-md-3">
-        <label>मुक्काम पोस्ट</label>
-        <input type="text" name="mukkam_post" class="form-control" value="{{ old('mukkam_post', $sangh->mukkam_post ?? '') }}">
-    </div>
 </div>
 
-<div class="form-row">
+{{-- Pincode + State + Country (common) --}}
+<div class="form-row align-items-end">
     <div class="form-group col-md-2">
         <label>पिनकोड</label>
         @php($savedPincode = (string) old('pincode', $sangh->pincode ?? ''))
@@ -194,32 +236,28 @@
             <ul id="pincode_results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:1050;background:#fff;border:1px solid #ced4da;border-top:none;border-radius:0 0 4px 4px;max-height:200px;overflow-y:auto;padding:0;margin:0;list-style:none;"></ul>
         </div>
     </div>
-    <div class="form-group col-md-5">
-        <label>पत्ता</label>
-        <input type="text" name="address" class="form-control" value="{{ old('address', $sangh->address ?? '') }}">
-    </div>
     <div class="form-group col-md-3">
-        <label>रस्ता / पथ</label>
-        <input type="text" name="road_path" class="form-control" value="{{ old('road_path', $sangh->road_path ?? '') }}">
+        <label>राज्य / State</label>
+        <input type="text" class="form-control" value="Maharashtra" disabled>
     </div>
     <div class="form-group col-md-2">
-        <label>विभाग/प्रभाग</label>
-        <input type="text" name="ward_section" class="form-control" value="{{ old('ward_section', $sangh->ward_section ?? '') }}">
+        <label>देश / Country</label>
+        <input type="text" class="form-control" value="India" disabled>
     </div>
 </div>
 
 <div class="form-row">
     <div class="form-group col-md-2">
         <label>पुरुष सभासद</label>
-        <input type="number" min="0" name="male" class="form-control" value="{{ old('male', $sangh->male ?? '') }}">
+        <input type="number" min="0" step="1" inputmode="numeric" id="male" name="male" class="form-control" value="{{ old('male', $sangh->male ?? '') }}">
     </div>
     <div class="form-group col-md-2">
         <label>महिला सभासद</label>
-        <input type="number" min="0" name="female" class="form-control" value="{{ old('female', $sangh->female ?? '') }}">
+        <input type="number" min="0" step="1" inputmode="numeric" id="female" name="female" class="form-control" value="{{ old('female', $sangh->female ?? '') }}">
     </div>
     <div class="form-group col-md-2">
         <label>एकूण सभासद</label>
-        <input type="number" min="0" name="total_members" class="form-control" value="{{ old('total_members', $sangh->total_members ?? '') }}">
+        <input type="number" min="0" step="1" inputmode="numeric" id="total_members" name="total_members" class="form-control" value="{{ old('total_members', $sangh->total_members ?? '') }}" readonly>
     </div>
 </div>
 
@@ -331,6 +369,9 @@
         const pincodeField      = document.getElementById('pincode');
         const pincodeSearch     = document.getElementById('pincode_search');
         const pincodeResults    = document.getElementById('pincode_results');
+        const maleField         = document.getElementById('male');
+        const femaleField       = document.getElementById('female');
+        const totalMembersField = document.getElementById('total_members');
 
         // Collect all district options (except the blank first one) into memory once
         const allDistrictOptions = Array.from(districtSelect.options).filter(o => o.value !== '');
@@ -447,10 +488,72 @@
             }
         }
 
+        // Address type toggle
+        const addrTypeField  = document.getElementById('address_type');
+        const sectionVillage = document.getElementById('section_village_addr');
+        const sectionCity    = document.getElementById('section_city_addr');
+        const btnAddrVillage = document.getElementById('btn_addr_village');
+        const btnAddrCity    = document.getElementById('btn_addr_city');
+
+        function setAddrType(type) {
+            if (!addrTypeField) return;
+            addrTypeField.value = type;
+            if (type === 'village') {
+                if (sectionVillage) sectionVillage.style.display = '';
+                if (sectionCity)    sectionCity.style.display    = 'none';
+                if (btnAddrVillage) { btnAddrVillage.classList.remove('btn-outline-primary'); btnAddrVillage.classList.add('btn-primary'); }
+                if (btnAddrCity)    { btnAddrCity.classList.remove('btn-primary');    btnAddrCity.classList.add('btn-outline-primary'); }
+            } else {
+                if (sectionVillage) sectionVillage.style.display = 'none';
+                if (sectionCity)    sectionCity.style.display    = '';
+                if (btnAddrCity)    { btnAddrCity.classList.remove('btn-outline-primary');    btnAddrCity.classList.add('btn-primary'); }
+                if (btnAddrVillage) { btnAddrVillage.classList.remove('btn-primary'); btnAddrVillage.classList.add('btn-outline-primary'); }
+            }
+        }
+
+        if (btnAddrVillage) btnAddrVillage.addEventListener('click', function() { setAddrType('village'); });
+        if (btnAddrCity)    btnAddrCity.addEventListener('click',    function() { setAddrType('city'); });
+
+        function sanitizeWholeNumberInput(input) {
+            if (!input) return '';
+            const sanitized = String(input.value || '').replace(/\D/g, '');
+            input.value = sanitized;
+            return sanitized;
+        }
+
+        function syncTotalMembers() {
+            if (!totalMembersField) return;
+            const male = sanitizeWholeNumberInput(maleField);
+            const female = sanitizeWholeNumberInput(femaleField);
+
+            if (male === '' && female === '') {
+                totalMembersField.value = '';
+                return;
+            }
+
+            totalMembersField.value = String((parseInt(male || '0', 10)) + (parseInt(female || '0', 10)));
+        }
+
+        ['keydown', 'input'].forEach(function(eventName) {
+            [maleField, femaleField].forEach(function(field) {
+                if (!field) return;
+                if (eventName === 'keydown') {
+                    field.addEventListener(eventName, function(e) {
+                        if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                            e.preventDefault();
+                        }
+                    });
+                } else {
+                    field.addEventListener(eventName, syncTotalMembers);
+                }
+            });
+        });
+
         // Run on page load to reflect existing saved values
         syncCode(vibhagSelect, vibhagCodeInput);
         filterDistricts(vibhagSelect.value);
         syncCode(districtSelect, districtCodeInput);
         populateTalukas(districtSelect.value);
+        syncTotalMembers();
     })();
 </script>

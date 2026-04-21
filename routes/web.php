@@ -92,6 +92,9 @@ Route::middleware('auth')->group(function () {
     Route::post('sanghs-import', [SanghController::class, 'importExcel'])->name('sanghs.import');
     Route::get('sanghs-template', [SanghController::class, 'downloadTemplate'])->name('sanghs.template');
     Route::post('sanghs-seed-placeholders', [SanghController::class, 'seedPlaceholders'])->name('sanghs.seed_placeholders');
+    Route::post('/sanghs/{sangh}/registration-receipt', [SanghController::class, 'updateRegistrationReceipt'])->name('sanghs.registration_receipt.update');
+    Route::post('/sanghs/{sangh}/renewals/create-year', [SanghController::class, 'createRenewal'])->name('sanghs.renewals.create');
+    Route::delete('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'destroyRenewal'])->name('sanghs.renewals.destroy');
     Route::post('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'updateRenewal'])->name('sanghs.renewals.update');
     Route::get('/sanghs/{sangh}/receipt/{year}/pdf', [SanghController::class, 'downloadReceiptPdf'])->name('sanghs.receipt.pdf');
     Route::get('/sanghs/{sangh}/pdf', [SanghController::class, 'downloadPdf'])->name('sanghs.pdf');         // generate & stream download

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Sangh;
+use App\Models\SanghRegistrationReceipt;
 use App\Models\SanghRenewal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -103,7 +104,7 @@ class SanghController extends Controller
 
         $vibhags = Sangh::query()->whereNotNull('pradeshik_vibhag')->distinct()->orderBy('pradeshik_vibhag')->pluck('pradeshik_vibhag');
         $districts = Sangh::query()->whereNotNull('district')->distinct()->orderBy('district')->pluck('district');
-        $years = range((int) date('Y'), 2010);
+        $years = range((int) date('Y'), 1970);
 
         return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'years'));
     }
@@ -148,9 +149,91 @@ class SanghController extends Controller
     }
     public function show(Sangh $sangh)
     {
-        $sangh->load(['creator', 'renewals']);
-        $renewals = $sangh->renewals->sortBy('renewal_year');
-        return view('sanghs.show', compact('sangh', 'renewals'));
+        $sangh->load(['creator', 'renewals', 'registrationReceipt']);
+
+        $registrationYear = $this->intOrNull($sangh->registration_year);
+
+        // Dedicated registration receipt is stored in separate table.
+        $newRegisterReceipt = $sangh->registrationReceipt;
+        if (!$newRegisterReceipt && $registrationYear !== null) {
+            $newRegisterReceipt = new SanghRegistrationReceipt([
+                'sangh_id' => $sangh->id,
+                'receipt_year' => $registrationYear,
+                'is_paid' => false,
+            ]);
+        }
+
+        // Only show renewals that have been actively used (any meaningful data entered)
+        $allRenewals = $sangh->renewals;
+        $renewals = $allRenewals->filter(function ($r) {
+            return $r->is_paid
+                || $r->feskcom_receipt_no !== null
+                || $r->feskcom_receipt_date !== null
+                || $r->annual_fee !== null
+                || $r->development_fee !== null
+                || $r->penalty_fee !== null
+                || $r->paid_amount !== null
+                || $r->male_members !== null
+                || $r->female_members !== null
+                || $r->total_members !== null;
+        })->sortByDesc('renewal_year');
+
+        // Available years = all years 1970→current that don't already have a visible record
+        $usedYears = $renewals->pluck('renewal_year')->all();
+        $currentYear = (int) date('Y');
+        $availableYears = array_values(array_filter(
+            range($currentYear, 1970),
+            fn($y) => !in_array($y, $usedYears, true)
+        ));
+
+        return view('sanghs.show', compact('sangh', 'renewals', 'availableYears', 'newRegisterReceipt', 'registrationYear'));
+    }
+
+    public function updateRegistrationReceipt(Request $request, Sangh $sangh)
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:paid,unpaid',
+            'feskcom_receipt_date' => 'nullable|date',
+            'annual_fee' => 'nullable|numeric|min:0',
+            'development_fee' => 'nullable|numeric|min:0',
+            'penalty_fee' => 'nullable|numeric|min:0',
+            'paid_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        $maleMembers = $this->intOrNull($sangh->male);
+        $femaleMembers = $this->intOrNull($sangh->female);
+        $totalMembers = ($maleMembers === null && $femaleMembers === null)
+            ? null
+            : (($maleMembers ?? 0) + ($femaleMembers ?? 0));
+
+        $year = $this->intOrNull($sangh->registration_year) ?? (int) date('Y');
+
+        $receipt = SanghRegistrationReceipt::query()->firstOrCreate(
+            ['sangh_id' => $sangh->id],
+            ['receipt_year' => $year, 'is_paid' => false]
+        );
+
+        // Auto-assign receipt number once, never overwrite
+        if (empty($receipt->feskcom_receipt_no)) {
+            $receipt->feskcom_receipt_no = 'FSNEW/' . $receipt->id;
+            $receipt->save();
+        }
+
+        $receipt->update([
+            'receipt_year' => $year,
+            'is_paid' => $validated['status'] === 'paid',
+            'feskcom_receipt_no' => $receipt->feskcom_receipt_no,
+            'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
+            'male_members' => $maleMembers,
+            'female_members' => $femaleMembers,
+            'total_members' => $totalMembers,
+            'annual_fee' => $validated['annual_fee'] ?? null,
+            'development_fee' => $validated['development_fee'] ?? null,
+            'penalty_fee' => $validated['penalty_fee'] ?? null,
+            'paid_amount' => $validated['paid_amount'] ?? null,
+        ]);
+
+        return redirect()->route('sanghs.show', $sangh)->with('success', 'New register Sangh receipt updated.');
     }
 
 
@@ -508,11 +591,53 @@ class SanghController extends Controller
         return $pdf->download('Receipt_' . str_replace(' ', '_', $sangh->name_of_sangh) . '_' . $year . '.pdf');
     }
 
+    public function createRenewal(Request $request, Sangh $sangh)
+    {
+        $request->validate([
+            'renewal_year' => ['required', 'integer', 'min:1970', 'max:' . (int) date('Y')],
+        ]);
+        $year = (int) $request->input('renewal_year');
+        $maleMembers = $this->intOrNull($sangh->male);
+        $femaleMembers = $this->intOrNull($sangh->female);
+        $totalMembers = ($maleMembers === null && $femaleMembers === null)
+            ? null
+            : (($maleMembers ?? 0) + ($femaleMembers ?? 0));
+
+        // Remove any blank auto-created stub for this year, then create fresh
+        SanghRenewal::query()
+            ->where('sangh_id', $sangh->id)
+            ->where('renewal_year', $year)
+            ->whereNull('feskcom_receipt_no')
+            ->whereNull('annual_fee')
+            ->whereNull('paid_amount')
+            ->where('is_paid', false)
+            ->delete();
+
+        SanghRenewal::query()->firstOrCreate(
+            ['sangh_id' => $sangh->id, 'renewal_year' => $year],
+            [
+                'is_paid' => false,
+                'male_members' => $maleMembers,
+                'female_members' => $femaleMembers,
+                'total_members' => $totalMembers,
+            ]
+        );
+        return redirect()->route('sanghs.show', $sangh)->with('success', "Year {$year} renewal record created.");
+    }
+
+    public function destroyRenewal(Sangh $sangh, int $year)
+    {
+        SanghRenewal::query()
+            ->where('sangh_id', $sangh->id)
+            ->where('renewal_year', $year)
+            ->delete();
+        return redirect()->route('sanghs.show', $sangh)->with('success', "Year {$year} renewal record deleted.");
+    }
+
     public function updateRenewal(Request $request, Sangh $sangh, int $year)
     {
         $validated = $request->validate([
             'status' => 'required|in:paid,unpaid',
-            'feskcom_receipt_no' => 'nullable|string|max:255',
             'feskcom_receipt_date' => 'nullable|date',
             'male_members' => 'nullable|integer|min:0',
             'female_members' => 'nullable|integer|min:0',
@@ -528,9 +653,15 @@ class SanghController extends Controller
             ['is_paid' => false]
         );
 
+        // Auto-assign receipt number once, never overwrite
+        if (empty($renewal->feskcom_receipt_no)) {
+            $renewal->feskcom_receipt_no = 'FSREN/' . $renewal->id;
+            $renewal->save();
+        }
+
         $renewal->update([
             'is_paid' => $validated['status'] === 'paid',
-            'feskcom_receipt_no' => $validated['feskcom_receipt_no'] ?? null,
+            'feskcom_receipt_no' => $renewal->feskcom_receipt_no,
             'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
             'male_members' => $validated['male_members'] ?? null,
             'female_members' => $validated['female_members'] ?? null,
@@ -611,6 +742,10 @@ class SanghController extends Controller
 
     private function normalizePayload(array $validated): array
     {
+        $male = $this->intOrNull($validated['male'] ?? null);
+        $female = $this->intOrNull($validated['female'] ?? null);
+        $totalMembers = ($male === null && $female === null) ? null : (($male ?? 0) + ($female ?? 0));
+
         return [
             'registration_year' => $validated['registration_year'] ?? null,
             'name_of_sangh' => $validated['name_of_sangh'] ?? null,
@@ -628,9 +763,9 @@ class SanghController extends Controller
             'address' => $validated['address'] ?? null,
             'road_path' => $validated['road_path'] ?? null,
             'ward_section' => $validated['ward_section'] ?? null,
-            'male' => $validated['male'] ?? null,
-            'female' => $validated['female'] ?? null,
-            'total_members' => $validated['total_members'] ?? null,
+            'male' => $male,
+            'female' => $female,
+            'total_members' => $totalMembers,
             'president' => $validated['president'] ?? null,
             'president_phone' => $validated['president_phone'] ?? null,
             'president_whatsapp' => $validated['president_whatsapp'] ?? null,
@@ -691,13 +826,7 @@ class SanghController extends Controller
 
     private function ensureRenewalsForSangh(Sangh $sangh): void
     {
-        $currentYear = (int) date('Y');
-        for ($year = 2010; $year <= $currentYear; $year++) {
-            SanghRenewal::query()->firstOrCreate(
-                ['sangh_id' => $sangh->id, 'renewal_year' => $year],
-                ['is_paid' => false]
-            );
-        }
+        // Renewals are now created on-demand by the user from the details page.
     }
 
     private function mapRowByHeader(array $header, array $row): array

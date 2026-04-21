@@ -82,4 +82,9 @@ class Sangh extends Model
         {
             return $this->hasMany(SanghRenewal::class);
         }
+
+        public function registrationReceipt()
+        {
+            return $this->hasOne(SanghRegistrationReceipt::class);
+        }
 }
