@@ -117,7 +117,14 @@ class SanghController extends Controller
         $validated = $request->validate($this->rules());
 
         DB::transaction(function () use ($validated) {
-            $numbering = $this->makeNumbering($validated['pradeshik_vibhag'] ?? null, $validated['district'] ?? null, $validated['pradeshik_vibhag_code'] ?? null, $validated['district_code'] ?? null);
+            $numbering = $this->makeNumbering(
+                $validated['pradeshik_vibhag'] ?? null,
+                $validated['district'] ?? null,
+                $validated['pradeshik_vibhag_code'] ?? null,
+                $validated['district_code'] ?? null,
+                $validated['category_code'] ?? null,
+                $validated['sangh_type_code'] ?? null
+            );
 
             $sangh = Sangh::create(array_merge(
                 $this->normalizePayload($validated),
@@ -150,7 +157,34 @@ class SanghController extends Controller
     {
         $validated = $request->validate($this->rules(false));
 
-        $sangh->update($this->normalizePayload($validated));
+        $selectedVibhag = $validated['pradeshik_vibhag'] ?? null;
+        $selectedDistrict = $validated['district'] ?? null;
+
+        $keepVibhagSerial = $sangh->pradeshik_vibhag === $selectedVibhag;
+        $keepDistrictSerial = $sangh->district === $selectedDistrict;
+
+        $numbering = $this->makeNumbering(
+            $selectedVibhag,
+            $selectedDistrict,
+            $validated['pradeshik_vibhag_code'] ?? null,
+            $validated['district_code'] ?? null,
+            $validated['category_code'] ?? null,
+            $validated['sangh_type_code'] ?? null,
+            $sangh->sangh_sr_no,
+            $keepVibhagSerial ? $sangh->pradeshik_sr_no : null,
+            $keepDistrictSerial ? $sangh->district_sr_no : null
+        );
+
+        $sangh->update(array_merge($this->normalizePayload($validated), [
+            'sangh_sr_no' => $numbering['sangh_sr_no'],
+            'unique_ref_no' => $numbering['unique_ref_no'],
+            'pradeshik_sr_no' => $numbering['pradeshik_sr_no'],
+            'pradeshik_ref_no' => $numbering['pradeshik_ref_no'],
+            'district_sr_no' => $numbering['district_sr_no'],
+            'district_ref_no' => $numbering['district_ref_no'],
+            'pradeshik_vibhag_code' => $numbering['pradeshik_vibhag_code'],
+            'district_code' => $numbering['district_code'],
+        ]));
         $this->ensureRenewalsForSangh($sangh);
 
         return redirect()->route('sanghs.index')->with('success', 'Sangh updated successfully.');
@@ -272,7 +306,14 @@ class SanghController extends Controller
                 $pradeshikCode = $this->extractCodePart($mapped['प्रादेशिक विभागातील संघाचा अनु क्र.'] ?? null);
                 $districtCode = $this->extractCodePart($mapped['जिल्हा मधे संघाचा अनु. क्र.'] ?? null);
 
-                $numbering = $this->makeNumbering($pradeshikVibhag, $district, $pradeshikCode, $districtCode);
+                $numbering = $this->makeNumbering(
+                    $pradeshikVibhag,
+                    $district,
+                    $pradeshikCode,
+                    $districtCode,
+                    $this->codeChar($mapped['श्रेणी'] ?? null),
+                    $this->codeChar($mapped['संघ प्रकार'] ?? null)
+                );
 
                 $sangh = Sangh::create(array_merge([
                     'name_of_sangh' => $name,
@@ -538,11 +579,11 @@ class SanghController extends Controller
         return [
             'name_of_sangh' => $nameRule,
             'registration_year' => 'nullable|integer|min:1900|max:' . date('Y'),
-            'category_code' => 'nullable|string|in:R,U,A',
-            'sangh_type_code' => 'nullable|string|in:G,F',
-            'pradeshik_vibhag' => 'nullable|string|max:255',
+            'category_code' => 'required|string|in:R,U,A',
+            'sangh_type_code' => 'required|string|in:G,F',
+            'pradeshik_vibhag' => 'required|string|max:255',
             'pradeshik_vibhag_code' => 'nullable|string|max:10',
-            'district' => 'nullable|string|max:255',
+            'district' => 'required|string|max:255',
             'district_code' => 'nullable|string|max:10',
             'taluka' => 'nullable|string|max:255',
             'village' => 'nullable|string|max:255',
@@ -601,24 +642,37 @@ class SanghController extends Controller
         ];
     }
 
-    private function makeNumbering(?string $vibhag, ?string $district, ?string $vibhagCodeInput, ?string $districtCodeInput): array
+    private function makeNumbering(
+        ?string $vibhag,
+        ?string $district,
+        ?string $vibhagCodeInput,
+        ?string $districtCodeInput,
+        ?string $categoryCode,
+        ?string $sanghTypeCode,
+        ?int $existingGlobalNo = null,
+        ?int $existingVibhagNo = null,
+        ?int $existingDistrictNo = null
+    ): array
     {
-        $nextGlobal = ((int) Sangh::max('sangh_sr_no')) + 1;
+        $nextGlobal = $existingGlobalNo ?? (((int) Sangh::max('sangh_sr_no')) + 1);
 
         $vibhagCode = $this->normalizeCode($vibhagCodeInput ?: $vibhag);
         $districtCode = $this->normalizeCode($districtCodeInput ?: $district);
 
-        $nextVibhag = ((int) Sangh::query()
+        $nextVibhag = $existingVibhagNo ?? (((int) Sangh::query()
             ->where('pradeshik_vibhag', $vibhag)
-            ->max('pradeshik_sr_no')) + 1;
+            ->max('pradeshik_sr_no')) + 1);
 
-        $nextDistrict = ((int) Sangh::query()
+        $nextDistrict = $existingDistrictNo ?? (((int) Sangh::query()
             ->where('district', $district)
-            ->max('district_sr_no')) + 1;
+            ->max('district_sr_no')) + 1);
+
+        $category = in_array($categoryCode, ['R', 'U', 'A'], true) ? $categoryCode : 'R';
+        $sanghType = in_array($sanghTypeCode, ['G', 'F'], true) ? $sanghTypeCode : 'G';
 
         return [
             'sangh_sr_no' => $nextGlobal,
-            'unique_ref_no' => $vibhagCode . '/' . $nextGlobal,
+            'unique_ref_no' => $category . '/' . $sanghType . '/' . $nextGlobal,
             'pradeshik_sr_no' => $nextVibhag,
             'pradeshik_ref_no' => $vibhagCode . '/' . $nextVibhag,
             'district_sr_no' => $nextDistrict,
