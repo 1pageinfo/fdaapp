@@ -21,6 +21,10 @@
                 <i class="ti-plus mr-1" aria-hidden="true"></i>
                 <span class="d-none d-lg-inline">Add Subfolder</span><span class="d-lg-none">Subfolder</span>
               </a>
+              <a href="#" class="btn btn-outline-secondary" data-toggle="modal" data-target="#noteModal">
+                <i class="ti-pencil-alt mr-1" aria-hidden="true"></i>
+                <span class="d-none d-lg-inline">Add Note</span><span class="d-lg-none">Note</span>
+              </a>
               <a href="#" class="btn btn-primary" data-toggle="modal" data-target="#uploadModal">
                 <i class="ti-upload mr-1" aria-hidden="true"></i>
                 <span class="d-none d-lg-inline">Upload File</span><span class="d-lg-none">Upload</span>
@@ -136,6 +140,51 @@
         </div>
       </div>
 
+    </div>
+  </div>
+  <!-- Add Note Modal -->
+  <div class="modal fade" id="noteModal" tabindex="-1" role="dialog" aria-labelledby="noteModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+
+        <div class="modal-header">
+          <h5 class="modal-title" id="noteModalLabel">
+            <i class="ti-pencil-alt mr-2" aria-hidden="true"></i> Add Note (.txt)
+          </h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+
+        <form action="{{ route('files.notes.store') }}" method="POST" class="m-0">
+          @csrf
+          <input type="hidden" name="folder_id" value="{{ $folder->id }}">
+
+          <div class="modal-body">
+            <div class="form-group mb-3">
+              <label for="note_name" class="font-weight-600">Note Name</label>
+              <input type="text" id="note_name" name="note_name" class="form-control" maxlength="150"
+                placeholder="Meeting Notes" required>
+              <small class="form-text text-muted">.txt will be added automatically if not included.</small>
+            </div>
+
+            <div class="form-group mb-0">
+              <label for="note_content" class="font-weight-600">Note Content</label>
+              <textarea id="note_content" name="note_content" class="form-control" rows="8"
+                placeholder="Write your note here..."></textarea>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-success">
+              <i class="ti-check mr-1" aria-hidden="true"></i> Save Note
+            </button>
+          </div>
+        </form>
+
+      </div>
     </div>
   </div>
   <!-- Upload Modal -->

@@ -61,6 +61,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('groups', GroupController::class);
     Route::resource('chats', ChatController::class);
     Route::resource('files', FileController::class);
+    Route::post('files/notes', [FileController::class, 'storeNote'])->name('files.notes.store');
     Route::resource('folders', FolderController::class);
     Route::resource('receipts', ReceiptController::class);
     Route::resource('meetings', MeetingController::class);

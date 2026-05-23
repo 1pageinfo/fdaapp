@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use ZipArchive;
 
 class FileController extends Controller
 {
@@ -37,24 +38,7 @@ class FileController extends Controller
 
         $uploadedFile = $request->file('file');
 
-        $pathPrefix = 'uploads';
-
-        if ($request->folder_id) {
-            $folder = Folder::with('parent')->find($request->folder_id);
-
-            if ($folder && $folder->year) {
-                $pathPrefix .= '/' . $folder->year;
-            }
-
-            $names = [];
-            $current = $folder;
-            while ($current) {
-                $names[] = $current->name;
-                $current = $current->parent;
-            }
-            $safe = array_map(fn($n) => trim(str_replace(['/', '\\'], '-', $n)), $names);
-            $pathPrefix .= '/' . implode('/', array_reverse($safe));
-        }
+        $pathPrefix = $this->buildPathPrefix($request->folder_id);
 
         // TEMP FILE PATH
         $tmpPath = $uploadedFile->getRealPath();
@@ -91,7 +75,7 @@ class FileController extends Controller
             'name' => $uploadedFile->getClientOriginalName(),
             'mime' => $uploadedFile->getClientMimeType(),
             'size_bytes' => filesize($finalPath),
-            'path' => Storage::disk('public')->url($storedPath),
+            'path' => Storage::url($storedPath),
             'disk_path' => $storedPath,
             'uploaded_by' => auth()->id(),
         ]);
@@ -102,6 +86,63 @@ class FileController extends Controller
         }
 
         return back()->with('success', 'File uploaded and compressed successfully.');
+    }
+
+    public function storeNote(Request $request)
+    {
+        $request->validate([
+            'folder_id' => 'required|exists:folders,id',
+            'note_name' => 'required|string|max:150',
+            'note_content' => 'nullable|string|max:65535',
+        ]);
+
+        $pathPrefix = $this->buildPathPrefix($request->folder_id);
+
+        $baseName = trim((string) $request->input('note_name'));
+        $baseName = str_replace(['/', '\\'], '-', $baseName);
+        $baseName = preg_replace('/\s+/', ' ', $baseName);
+        $baseName = preg_replace('/[^A-Za-z0-9 _.-]/', '', $baseName);
+        $baseName = trim($baseName, " .");
+
+        if ($baseName === '') {
+            return back()->withErrors(['note_name' => 'Please enter a valid note name.'])->withInput();
+        }
+
+        if (!Str::endsWith(strtolower($baseName), '.txt')) {
+            $baseName .= '.txt';
+        }
+
+        $noteContent = (string) $request->input('note_content', '');
+        $storedPath = $pathPrefix . '/' . $baseName;
+
+        if (Storage::disk('public')->exists($storedPath)) {
+            $namePart = pathinfo($baseName, PATHINFO_FILENAME);
+            $extPart = pathinfo($baseName, PATHINFO_EXTENSION);
+
+            $counter = 1;
+            do {
+                $candidate = $namePart . ' (' . $counter . ').' . $extPart;
+                $storedPath = $pathPrefix . '/' . $candidate;
+                $counter++;
+            } while (Storage::disk('public')->exists($storedPath));
+
+            $baseName = basename($storedPath);
+        }
+
+        Storage::disk('public')->put($storedPath, $noteContent);
+
+        File::create([
+            'folder_id' => $request->folder_id,
+            'name' => $baseName,
+            'mime' => 'text/plain',
+            'size_bytes' => strlen($noteContent),
+            'path' => Storage::url($storedPath),
+            'disk_path' => $storedPath,
+            'uploaded_by' => auth()->id(),
+        ]);
+
+        return redirect()->route('folders.show', $request->folder_id)
+            ->with('success', 'Note added successfully.');
     }
 
 
@@ -135,7 +176,7 @@ class FileController extends Controller
 
             $file->update([
                 'disk_path' => $storedPath,
-                'path' => Storage::disk('public')->url($storedPath),
+                'path' => Storage::url($storedPath),
                 'mime' => $uploadedFile->getClientMimeType(),
                 'size_bytes' => $uploadedFile->getSize(),
             ]);
@@ -205,6 +246,37 @@ class FileController extends Controller
         } else {
             copy($source, $destination);
         }
+    }
+
+    private function buildPathPrefix($folderId = null): string
+    {
+        $pathPrefix = 'uploads';
+
+        if (!$folderId) {
+            return $pathPrefix;
+        }
+
+        $folder = Folder::with('parent')->find($folderId);
+
+        if ($folder && $folder->year) {
+            $pathPrefix .= '/' . $folder->year;
+        }
+
+        $names = [];
+        $current = $folder;
+
+        while ($current) {
+            $names[] = $current->name;
+            $current = $current->parent;
+        }
+
+        $safe = array_map(fn($n) => trim(str_replace(['/', '\\'], '-', $n)), $names);
+
+        if (!empty($safe)) {
+            $pathPrefix .= '/' . implode('/', array_reverse($safe));
+        }
+
+        return $pathPrefix;
     }
 
 
