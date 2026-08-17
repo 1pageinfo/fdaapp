@@ -51,14 +51,19 @@
       </div>
 
       <!-- Subfolders -->
-      <div class="row">
-        <div class="col-12 d-flex justify-content-between align-items-center mb-2">
-          <h4 class="mb-0">Subfolders ( {{ $folder->subfolders->count() }} )</h4>
-        </div>
+      <div class="col-12 d-flex justify-content-between align-items-center mb-2 px-0">
+        <h4 class="mb-0">Subfolders ( {{ $folder->subfolders->count() }} )</h4>
+      </div>
+      <div class="row" id="subfolderList" data-reorder-url="{{ route('folders.reorder') }}">
 
         @forelse($folder->subfolders as $sub)
-          <div class="col-6 col-sm-4 col-md-3 col-xl-2 mb-4">
+          <div class="col-6 col-sm-4 col-md-3 col-xl-2 mb-4 sortable-item" data-id="{{ $sub->id }}" draggable="true">
             <div class="card shadow-sm border-0 h-100 position-relative">
+
+              <!-- Drag Handle -->
+              <div class="position-absolute top-0 start-0 p-2 text-muted drag-handle" style="z-index: 10; cursor: grab;" title="Drag to reorder">
+                <i class="ti-move"></i>
+              </div>
 
               <!-- Edit/Delete Buttons -->
               <div class="position-absolute top-0 end-0 p-2 d-flex gap-2" style="z-index:10;">
@@ -296,6 +301,7 @@ document.addEventListener("DOMContentLoaded", function () {
         xhr.send(formData);
     });
 
+
     // RESET WHEN MODAL CLOSES
     $('#uploadModal').on('hidden.bs.modal', function () {
         progressWrapper.classList.add("d-none");
@@ -311,5 +317,80 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 </script>
 
+<style>
+  .sortable-item.is-dragging {
+      opacity: 0.55;
+  }
+  .drag-handle {
+      cursor: grab;
+  }
+</style>
 
+<script>
+  (function () {
+      const list = document.getElementById('subfolderList');
+      if (!list) return;
+
+      let dragged = null;
+
+      const persistOrder = async () => {
+          const order = [...list.querySelectorAll('.sortable-item')].map(item => Number(item.dataset.id));
+
+          const response = await fetch(list.dataset.reorderUrl, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+              },
+              body: JSON.stringify({ order }),
+          });
+
+          if (!response.ok) {
+              throw new Error('Subfolder reorder save failed');
+          }
+      };
+
+      list.querySelectorAll('.sortable-item').forEach(item => {
+          item.addEventListener('dragstart', event => {
+              dragged = item;
+              item.classList.add('is-dragging');
+              if (event.dataTransfer) {
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', String(item.dataset.id));
+              }
+          });
+
+          item.addEventListener('dragend', async () => {
+              item.classList.remove('is-dragging');
+              if (!dragged) {
+                  return;
+              }
+
+              try {
+                  await persistOrder();
+              } catch (error) {
+                  window.location.reload();
+              }
+
+              dragged = null;
+          });
+
+          item.addEventListener('dragover', event => {
+              event.preventDefault();
+              if (!dragged || dragged === item) {
+                  return;
+              }
+
+              const rect = item.getBoundingClientRect();
+              const relX = event.clientX - rect.left;
+              const relY = event.clientY - rect.top;
+              const shouldInsertAfter = (relX > rect.width / 2) || (relY > rect.height / 2);
+
+              list.insertBefore(dragged, shouldInsertAfter ? item.nextSibling : item);
+          });
+      });
+  })();
+</script>
 @endsection

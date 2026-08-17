@@ -25,8 +25,19 @@
                                 {{ $role->slug }}
                             </label>
                         @endforeach
-                        <button class="btn btn-sm btn-primary">Save</button>
+                        <button class="btn btn-sm btn-primary ms-2">Save</button>
                     </form>
+                </td>
+                <td>
+                    @if($user->id !== auth()->id())
+                        <form method="POST" action="{{ route('admin.user_roles.destroy', $user) }}" class="d-inline"
+                            onsubmit="return confirm('Are you sure you want to delete this user? All personal information will be permanently removed, but their messages and uploads will be preserved.');">
+                            @csrf @method('DELETE')
+                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                        </form>
+                    @else
+                        <span class="badge badge-secondary text-dark">Current User</span>
+                    @endif
                 </td>
             </tr>
             @endforeach

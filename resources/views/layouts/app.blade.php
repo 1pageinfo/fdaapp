@@ -223,6 +223,15 @@
               <span class="menu-title">Settings</span>
             </a>
           </li>
+
+          {{-- Manage Users --}}
+          <li class="nav-item">
+            <a class="nav-link {{ request()->is('admin/user-roles*') ? 'active' : '' }}" href="{{ route('admin.user_roles.index') }}"
+              data-perm="users.view|manage-users">
+              <i class="ti-user menu-icon"></i>
+              <span class="menu-title">Manage Users</span>
+            </a>
+          </li>
           </br></br></br></br></br>
 
           <li class="nav-item mt-3 px-3 text-white">

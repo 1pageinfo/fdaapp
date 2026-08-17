@@ -24,10 +24,9 @@ class File extends Model
         return $this->belongsTo(Folder::class);
     }
 
-    // current uploader relation
     public function uploader()
     {
-        return $this->belongsTo(User::class, 'uploaded_by');
+        return $this->belongsTo(User::class, 'uploaded_by')->withTrashed();
     }
 
     // alias "user" so existing code that eager-loads "user" won't break

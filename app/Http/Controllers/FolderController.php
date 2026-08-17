@@ -13,7 +13,9 @@ class FolderController extends Controller
     {
         $folders = \App\Models\Folder::with(['subfolders', 'group'])
             ->whereNull('parent_id') // only main folders
+            ->orderBy('sort_order')
             ->orderBy('year', 'desc')
+            ->orderBy('id')
             ->get();
 
         return view('folders.index', compact('folders'));
@@ -37,7 +39,13 @@ class FolderController extends Controller
             'owner_group_id' => 'nullable|exists:groups,id',
         ]);
 
-        Folder::create($request->only('name', 'year', 'parent_id', 'owner_group_id'));
+        $parentId = $request->input('parent_id');
+        $maxSortOrder = Folder::where('parent_id', $parentId)->max('sort_order');
+
+        Folder::create([
+            ...$request->only('name', 'year', 'parent_id', 'owner_group_id'),
+            'sort_order' => (int) $maxSortOrder + 1,
+        ]);
 
         return redirect()->route('folders.index')->with('success', 'Folder created successfully.');
     }
@@ -89,9 +97,19 @@ class FolderController extends Controller
         return redirect()->route('folders.show', $folder->id)->with('success', 'Folder updated successfully.');
     }
 
+    public function reorder(Request $request)
+    {
+        $data = $request->validate([
+            'order' => ['required', 'array', 'min:1'],
+            'order.*' => ['required', 'integer', 'distinct', 'exists:folders,id'],
+        ]);
 
+        foreach (array_values($data['order']) as $index => $folderId) {
+            Folder::whereKey($folderId)->update(['sort_order' => $index + 1]);
+        }
 
-
+        return response()->json(['ok' => true]);
+    }
 }
 
 

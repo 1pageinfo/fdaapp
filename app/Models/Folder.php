@@ -9,7 +9,7 @@ class Folder extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'parent_id', 'owner_group_id', 'year'];
+    protected $fillable = ['name', 'parent_id', 'owner_group_id', 'year', 'sort_order'];
 
     public function parent()
     {
@@ -18,7 +18,7 @@ class Folder extends Model
 
     public function subfolders()
     {
-        return $this->hasMany(Folder::class, 'parent_id');
+        return $this->hasMany(Folder::class, 'parent_id')->orderBy('sort_order');
     }
 
     public function files()

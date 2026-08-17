@@ -9,11 +9,15 @@
             </a>
         </h2>
         <hr>
-        <div class="row g-3">
-
+        <div class="row g-3" id="folderList" data-reorder-url="{{ route('folders.reorder') }}">
             @foreach ($folders as $folder)
-                <div class="col-md-3">
+                <div class="col-md-3 sortable-item" data-id="{{ $folder->id }}" draggable="true">
                     <div class="card shadow-sm h-100 text-center position-relative border-0 rounded-3">
+
+                        <!-- Drag Handle -->
+                        <div class="position-absolute top-0 start-0 p-2 text-muted drag-handle" style="z-index: 10; cursor: grab;" title="Drag to reorder">
+                            <i class="ti-move"></i>
+                        </div>
 
                         <!-- 3 DOT DROPDOWN BUTTON -->
                         <div class="position-absolute top-0 end-0 p-2" style="z-index: 10;">
@@ -63,7 +67,83 @@
                     </div>
                 </div>
             @endforeach
-
         </div>
     </div>
-<style @endsection
+
+    <style>
+        .sortable-item.is-dragging {
+            opacity: 0.55;
+        }
+        .drag-handle {
+            cursor: grab;
+        }
+    </style>
+
+    <script>
+        (function () {
+            const list = document.getElementById('folderList');
+            if (!list) return;
+
+            let dragged = null;
+
+            const persistOrder = async () => {
+                const order = [...list.querySelectorAll('.sortable-item')].map(item => Number(item.dataset.id));
+
+                const response = await fetch(list.dataset.reorderUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                    },
+                    body: JSON.stringify({ order }),
+                });
+
+                if (!response.ok) {
+                    throw new Error('Folder reorder save failed');
+                }
+            };
+
+            list.querySelectorAll('.sortable-item').forEach(item => {
+                item.addEventListener('dragstart', event => {
+                    dragged = item;
+                    item.classList.add('is-dragging');
+                    if (event.dataTransfer) {
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', String(item.dataset.id));
+                    }
+                });
+
+                item.addEventListener('dragend', async () => {
+                    item.classList.remove('is-dragging');
+                    if (!dragged) {
+                        return;
+                    }
+
+                    try {
+                        await persistOrder();
+                    } catch (error) {
+                        window.location.reload();
+                    }
+
+                    dragged = null;
+                });
+
+                item.addEventListener('dragover', event => {
+                    event.preventDefault();
+                    if (!dragged || dragged === item) {
+                        return;
+                    }
+
+                    const rect = item.getBoundingClientRect();
+                    const relX = event.clientX - rect.left;
+                    const relY = event.clientY - rect.top;
+                    const shouldInsertAfter = (relX > rect.width / 2) || (relY > rect.height / 2);
+
+                    list.insertBefore(dragged, shouldInsertAfter ? item.nextSibling : item);
+                });
+            });
+        })();
+    </script>
+@endsection

@@ -79,10 +79,10 @@ Route::middleware('auth')->group(function () {
     Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::put('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
 
-    // Admin Role Management
     Route::prefix('admin')->group(function () {
         Route::get('/user-roles', [UserRoleController::class, 'index'])->name('admin.user_roles.index');
         Route::put('/user-roles/{user}', [UserRoleController::class, 'update'])->name('admin.user_roles.update');
+        Route::delete('/user-roles/{user}', [UserRoleController::class, 'destroy'])->name('admin.user_roles.destroy');
     });
 
 
@@ -114,6 +114,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('groups/{group}/members/{user}', [GroupController::class, 'removeMember'])->name('groups.members.remove');
     Route::delete('/groups/{group}', [GroupController::class, 'destroy'])->name('groups.destroy');
     Route::post('/groups/reorder', [GroupController::class, 'reorder'])->name('groups.reorder');
+    Route::post('/folders/reorder', [FolderController::class, 'reorder'])->name('folders.reorder');
 
     // CSV export
     Route::get('groups-export', [GroupController::class, 'exportCsv'])->name('groups.export');
