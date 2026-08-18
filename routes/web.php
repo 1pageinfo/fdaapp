@@ -19,6 +19,7 @@ use App\Http\Controllers\Auth\Admin\UserRoleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\LinkController;
+use App\Http\Controllers\SanghFeeSettingController;
 
 // Redirect root → dashboard
 Route::get('/', fn() => redirect()->route('dashboard'));
@@ -73,6 +74,12 @@ Route::middleware('auth')->group(function () {
     // Settings (global)
     Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
     Route::put('/settings', [SettingController::class, 'update'])->name('settings.update');
+
+    // Sangh fee slabs (linked to sangh registrations)
+    Route::get('/settings/sangh-fees', [SanghFeeSettingController::class, 'edit'])->name('settings.sangh_fees.edit');
+    Route::put('/settings/sangh-fees', [SanghFeeSettingController::class, 'update'])->name('settings.sangh_fees.update');
+    Route::post('/settings/sangh-fees/slabs', [SanghFeeSettingController::class, 'storeSlab'])->name('settings.sangh_fees.slabs.store');
+    Route::delete('/settings/sangh-fees/slabs/{slab}', [SanghFeeSettingController::class, 'destroySlab'])->name('settings.sangh_fees.slabs.destroy');
 
     // Profile (user personal settings)
     Route::get('/profile', [ProfileController::class, 'index'])->name('profile.index');

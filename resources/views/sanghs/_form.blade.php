@@ -261,6 +261,30 @@
     </div>
 </div>
 
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
+        <h6 class="text-muted text-uppercase mb-3" style="font-size:12px;">Fee Estimate (as per Fee Slabs)</h6>
+        <div class="form-row align-items-end mb-0">
+            <div class="form-group col-md-3 mb-0">
+                <label>प्रवेश शुल्क</label>
+                <input type="text" id="fee_admission" class="form-control bg-light" readonly>
+            </div>
+            <div class="form-group col-md-3 mb-0">
+                <label>वार्षिक शुल्क</label>
+                <input type="text" id="fee_annual" class="form-control bg-light" readonly>
+            </div>
+            <div class="form-group col-md-3 mb-0">
+                <label>विकास निधी शुल्क</label>
+                <input type="text" id="fee_development" class="form-control bg-light" readonly>
+            </div>
+            <div class="form-group col-md-3 mb-0">
+                <label class="fw-bold">एकूण देय रक्कम (Total)</label>
+                <input type="text" id="fee_payable" class="form-control bg-warning-subtle fw-bold border-warning" readonly>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="form-row">
     <div class="form-group col-md-3">
         <label>अध्यक्ष</label>
@@ -372,6 +396,41 @@
         const maleField         = document.getElementById('male');
         const femaleField       = document.getElementById('female');
         const totalMembersField = document.getElementById('total_members');
+
+        // Sangh fee slabs (admin-configured in Settings → Manage Fee Slabs)
+        const feeSlabs             = @json($feeSlabsForForm);
+        const admissionFeeStd      = @json($admissionFeeForForm);
+        const developmentFeeRateStd = @json($developmentFeeRateForForm);
+        const feeAdmissionField   = document.getElementById('fee_admission');
+        const feeAnnualField      = document.getElementById('fee_annual');
+        const feeDevelopmentField = document.getElementById('fee_development');
+        const feePayableField     = document.getElementById('fee_payable');
+
+        function formatFee(amount) {
+            return '₹ ' + Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function annualFeeForMembers(total) {
+            if (total === null || total === '' || isNaN(total)) return 0;
+            const n = parseInt(total, 10);
+            const slab = feeSlabs.find(function (s) {
+                return n >= s.min_members && (s.max_members === null || n <= s.max_members);
+            });
+            return slab ? parseFloat(slab.annual_fee) : 0;
+        }
+
+        function syncFeeEstimate() {
+            if (!feeAdmissionField) return;
+            const total = totalMembersField.value;
+            const totalN = (total === null || total === '' || isNaN(total)) ? 0 : parseInt(total, 10);
+            const annual = annualFeeForMembers(total);
+            const development = developmentFeeRateStd * totalN;
+
+            feeAdmissionField.value = formatFee(admissionFeeStd);
+            feeAnnualField.value = formatFee(annual);
+            feeDevelopmentField.value = formatFee(development);
+            feePayableField.value = formatFee(admissionFeeStd + annual + development);
+        }
 
         // Collect all district options (except the blank first one) into memory once
         const allDistrictOptions = Array.from(districtSelect.options).filter(o => o.value !== '');
@@ -528,10 +587,12 @@
 
             if (male === '' && female === '') {
                 totalMembersField.value = '';
+                syncFeeEstimate();
                 return;
             }
 
             totalMembersField.value = String((parseInt(male || '0', 10)) + (parseInt(female || '0', 10)));
+            syncFeeEstimate();
         }
 
         ['keydown', 'input'].forEach(function(eventName) {
@@ -555,5 +616,19 @@
         syncCode(districtSelect, districtCodeInput);
         populateTalukas(districtSelect.value);
         syncTotalMembers();
+        syncFeeEstimate();
+
+        // Minimum 25 members is mandatory to register/renew a sangh (per fee slab rules)
+        const sanghForm = totalMembersField ? totalMembersField.closest('form') : null;
+        if (sanghForm) {
+            sanghForm.addEventListener('submit', function (e) {
+                const total = parseInt(totalMembersField.value || '0', 10) || 0;
+                if (total < 25) {
+                    e.preventDefault();
+                    alert('एकूण सभासद किमान 25 असणे आवश्यक आहे.\nMinimum 25 total members required to save.');
+                    maleField.focus();
+                }
+            });
+        }
     })();
 </script>

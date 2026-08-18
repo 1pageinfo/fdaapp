@@ -16,6 +16,11 @@
         ? null
         : (($registeredMale ?? 0) + ($registeredFemale ?? 0));
 
+    // Sangh fee slabs (admin-configured in Settings → Manage Fee Slabs) — used to
+    // live-calculate वार्षिक शुल्क / विकास निधी शुल्क for renewal rows below.
+    $feeSlabsForRenewal = \App\Models\SanghFeeSlab::orderBy('min_members')->get(['min_members', 'max_members', 'annual_fee']);
+    $developmentFeeRateForRenewal = (float) \App\Models\Setting::getValue('sangh_development_fee_rate', 0);
+
     $masterRows = [
         ['वर्ष', $sangh->registration_year],
         ['संघाचे नाव', $sangh->name_of_sangh],
@@ -71,31 +76,16 @@
         </div>
     @endif
 
-    <div class="card border-warning shadow-sm mb-3">
-        <div class="card-body py-2 px-3 bg-warning-subtle">
-            <small class="text-uppercase text-muted d-block">Sang Number</small>
-            <div class="fw-bold fs-5 text-dark">{{ $display($sangNumber) }}</div>
-        </div>
-    </div>
-
     <div class="row g-3 mb-3">
-        <div class="col-md-4">
+        <div class="col-md-6">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body py-3">
-                    <small class="text-muted d-block">Unique Ref</small>
+                    <small class="text-muted d-block">Sang Number</small>
                     <strong>{{ $display($sangh->unique_ref_no) }}</strong>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body py-3">
-                    <small class="text-muted d-block">Pradeshik Ref</small>
-                    <strong>{{ $display($sangh->pradeshik_ref_no) }}</strong>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
+        <div class="col-md-6">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body py-3">
                     <small class="text-muted d-block">District Ref</small>
@@ -139,9 +129,9 @@
                         <th>पुरुष</th>
                         <th>महिला</th>
                         <th>एकूण</th>
+                        <th>प्रवेश शुल्क</th>
                         <th>वार्षिक शुल्क</th>
                         <th>विकास निधी शुल्क</th>
-                        <th>दंड शुल्क</th>
                         <th>पावती रक्कम (भरलेली)</th>
                         <th>Action</th>
                     </tr>
@@ -158,14 +148,14 @@
                                 <option value="unpaid" @selected(!$newRegisterReceipt->is_paid)>Unpaid</option>
                             </select>
                         </td>
-                        <td><input type="text" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->feskcom_receipt_no ?: 'FSNEW/auto' }}" readonly disabled></td>
+                        <td><input type="text" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->feskcom_receipt_no }}" readonly disabled></td>
                         <td><input type="date" name="feskcom_receipt_date" class="form-control form-control-sm" value="{{ optional($newRegisterReceipt->feskcom_receipt_date)->format('Y-m-d') }}" form="newRegisterReceiptForm"></td>
                         <td><input type="number" class="form-control form-control-sm" value="{{ $registeredMale }}" readonly></td>
                         <td><input type="number" class="form-control form-control-sm" value="{{ $registeredFemale }}" readonly></td>
                         <td><input type="number" class="form-control form-control-sm" value="{{ $registeredTotal }}" readonly></td>
-                        <td><input type="number" name="annual_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->annual_fee }}" form="newRegisterReceiptForm"></td>
-                        <td><input type="number" name="development_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->development_fee }}" form="newRegisterReceiptForm"></td>
-                        <td><input type="number" name="penalty_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->penalty_fee }}" form="newRegisterReceiptForm"></td>
+                        <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->admission_fee }}" disabled></td>
+                        <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->annual_fee }}" disabled></td>
+                        <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->development_fee }}" disabled></td>
                         <td><input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->paid_amount }}" form="newRegisterReceiptForm"></td>
                         <td class="text-nowrap">
                             <button type="submit" class="btn btn-sm btn-success mb-1" form="newRegisterReceiptForm">
@@ -240,11 +230,11 @@
                                 </td>
                                 <td><input type="text" class="form-control form-control-sm bg-light" value="{{ $renewal->feskcom_receipt_no ?: 'FSREN/auto' }}" readonly disabled></td>
                                 <td><input type="date" name="feskcom_receipt_date" class="form-control form-control-sm" value="{{ optional($renewal->feskcom_receipt_date)->format('Y-m-d') }}"></td>
-                                <td><input type="number" name="male_members" min="0" class="form-control form-control-sm" value="{{ $renewal->male_members }}"></td>
-                                <td><input type="number" name="female_members" min="0" class="form-control form-control-sm" value="{{ $renewal->female_members }}"></td>
-                                <td><input type="number" name="total_members" min="0" class="form-control form-control-sm" value="{{ $renewal->total_members }}"></td>
-                                <td><input type="number" name="annual_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $renewal->annual_fee }}"></td>
-                                <td><input type="number" name="development_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $renewal->development_fee }}"></td>
+                                <td><input type="number" name="male_members" min="0" class="form-control form-control-sm renewal-male" value="{{ $renewal->male_members }}"></td>
+                                <td><input type="number" name="female_members" min="0" class="form-control form-control-sm renewal-female" value="{{ $renewal->female_members }}"></td>
+                                <td><input type="number" name="total_members" min="0" class="form-control form-control-sm bg-light renewal-total" value="{{ $renewal->total_members }}" readonly></td>
+                                <td><input type="number" class="form-control form-control-sm bg-light renewal-annual" value="{{ $renewal->annual_fee }}" disabled></td>
+                                <td><input type="number" class="form-control form-control-sm bg-light renewal-development" value="{{ $renewal->development_fee }}" disabled></td>
                                 <td><input type="number" name="penalty_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $renewal->penalty_fee }}"></td>
                                 <td><input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm" value="{{ $renewal->paid_amount }}"></td>
                                 <td class="text-nowrap">
@@ -320,6 +310,10 @@
                                     </thead>
                                     <tbody>
                                         <tr>
+                                            <td>प्रवेश शुल्क</td>
+                                            <td class="text-end">₹ {{ number_format($newRegisterReceipt->admission_fee ?? 0, 2) }}</td>
+                                        </tr>
+                                        <tr>
                                             <td>वार्षिक शुल्क</td>
                                             <td class="text-end">₹ {{ number_format($newRegisterReceipt->annual_fee ?? 0, 2) }}</td>
                                         </tr>
@@ -327,13 +321,9 @@
                                             <td>विकास निधी शुल्क</td>
                                             <td class="text-end">₹ {{ number_format($newRegisterReceipt->development_fee ?? 0, 2) }}</td>
                                         </tr>
-                                        <tr>
-                                            <td>दंड शुल्क</td>
-                                            <td class="text-end">₹ {{ number_format($newRegisterReceipt->penalty_fee ?? 0, 2) }}</td>
-                                        </tr>
                                         <tr class="table-warning">
                                             <td><strong>एकूण रक्कम</strong></td>
-                                            <td class="text-end"><strong>₹ {{ number_format(($newRegisterReceipt->annual_fee ?? 0) + ($newRegisterReceipt->development_fee ?? 0) + ($newRegisterReceipt->penalty_fee ?? 0), 2) }}</strong></td>
+                                            <td class="text-end"><strong>₹ {{ number_format(($newRegisterReceipt->annual_fee ?? 0) + ($newRegisterReceipt->admission_fee ?? 0) + ($newRegisterReceipt->development_fee ?? 0), 2) }}</strong></td>
                                         </tr>
                                         <tr>
                                             <td><strong class="text-success">भरलेली रक्कम</strong></td>
@@ -525,6 +515,29 @@
             .modal-backdrop {
                 display: none !important;
             }
+
+            .navbar,
+            #sidebar {
+                display: none !important;
+            }
+
+            .page-body-wrapper,
+            .main-panel {
+                margin-left: 0 !important;
+                margin-top: 0 !important;
+                padding-top: 0 !important;
+                width: 100% !important;
+                min-height: 0 !important;
+            }
+
+            .sangh-show-page {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            body {
+                background: #fff !important;
+            }
         }
 
         @media (max-width: 992px) {
@@ -540,6 +553,47 @@
         function printSanghDetails() {
             window.print();
         }
+
+        (function () {
+            // Renewal Sangh Receipt: वार्षिक शुल्क / विकास निधी शुल्क always follow the
+            // admin-configured sangh fee slabs — auto-calculated, never entered manually.
+            const feeSlabs = @json($feeSlabsForRenewal);
+            const developmentFeeRate = @json($developmentFeeRateForRenewal);
+
+            function annualFeeForMembers(total) {
+                if (total === null || total === '' || isNaN(total)) return 0;
+                const n = parseInt(total, 10);
+                const slab = feeSlabs.find(function (s) {
+                    return n >= s.min_members && (s.max_members === null || n <= s.max_members);
+                });
+                return slab ? parseFloat(slab.annual_fee) : 0;
+            }
+
+            function syncRenewalRow(row) {
+                const maleField = row.querySelector('.renewal-male');
+                const femaleField = row.querySelector('.renewal-female');
+                const totalField = row.querySelector('.renewal-total');
+                const annualField = row.querySelector('.renewal-annual');
+                const developmentField = row.querySelector('.renewal-development');
+                if (!maleField || !femaleField || !totalField) return;
+
+                const male = parseInt(maleField.value || '0', 10) || 0;
+                const female = parseInt(femaleField.value || '0', 10) || 0;
+                const total = (maleField.value === '' && femaleField.value === '') ? '' : (male + female);
+
+                totalField.value = total;
+                if (annualField) annualField.value = annualFeeForMembers(total);
+                if (developmentField) developmentField.value = (total === '' ? 0 : developmentFeeRate * total);
+            }
+
+            document.querySelectorAll('.renewal-table tbody tr').forEach(function (row) {
+                syncRenewalRow(row);
+                ['.renewal-male', '.renewal-female'].forEach(function (sel) {
+                    const field = row.querySelector(sel);
+                    if (field) field.addEventListener('input', function () { syncRenewalRow(row); });
+                });
+            });
+        })();
 
         function printReceipt(year) {
             try {

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Sangh;
+use App\Models\SanghFeeSlab;
 use App\Models\SanghRegistrationReceipt;
 use App\Models\SanghRenewal;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -12,6 +14,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 
@@ -125,12 +128,44 @@ class SanghController extends Controller
 
     public function create()
     {
-        return view('sanghs.create');
+        return view('sanghs.create', $this->feeFormData());
+    }
+
+    /**
+     * Sangh fee slab data used by the create/edit form's live fee estimate.
+     * Fetched here (not in the Blade template) to avoid an @php/@endphp block
+     * inside sanghs._form.blade.php, which conflicts with that file's several
+     * other inline @php(...) directives during Blade compilation.
+     */
+    private function feeFormData(): array
+    {
+        return [
+            'feeSlabsForForm' => SanghFeeSlab::orderBy('min_members')->get(['min_members', 'max_members', 'annual_fee']),
+            'admissionFeeForForm' => (float) Setting::getValue('sangh_admission_fee', 0),
+            'developmentFeeRateForForm' => (float) Setting::getValue('sangh_development_fee_rate', 0),
+        ];
+    }
+
+    /**
+     * Minimum 25 members is mandatory to register/renew a sangh (per fee slab rules).
+     */
+    private function assertMinimumMembers(array $validated): void
+    {
+        $male = $this->intOrNull($validated['male'] ?? null);
+        $female = $this->intOrNull($validated['female'] ?? null);
+        $total = ($male ?? 0) + ($female ?? 0);
+
+        if ($total < 25) {
+            throw ValidationException::withMessages([
+                'male' => 'एकूण सभासद किमान 25 असणे आवश्यक आहे. (Minimum 25 total members required to save.)',
+            ]);
+        }
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate($this->rules());
+        $this->assertMinimumMembers($validated);
 
         DB::transaction(function () use ($validated) {
             $numbering = $this->makeNumbering(
@@ -159,13 +194,26 @@ class SanghController extends Controller
 
     public function edit(Sangh $sangh)
     {
-        return view('sanghs.edit', compact('sangh'));
+        return view('sanghs.edit', array_merge(compact('sangh'), $this->feeFormData()));
     }
     public function show(Sangh $sangh)
     {
         $sangh->load(['creator', 'renewals', 'registrationReceipt']);
 
         $registrationYear = $this->intOrNull($sangh->registration_year);
+
+        // Fees for the New register Sangh Receipt always follow the admin-configured
+        // sangh fee settings (standard fees + member-count slab) — never manually entered.
+        $maleForFee = $this->intOrNull($sangh->male);
+        $femaleForFee = $this->intOrNull($sangh->female);
+        $totalForFee = ($maleForFee === null && $femaleForFee === null)
+            ? null
+            : (($maleForFee ?? 0) + ($femaleForFee ?? 0));
+
+        $admissionFeeStd = (float) Setting::getValue('sangh_admission_fee', 0);
+        $annualFeeComputed = SanghFeeSlab::annualFeeForMemberCount($totalForFee) ?? 0;
+        $developmentFeeRate = (float) Setting::getValue('sangh_development_fee_rate', 0);
+        $developmentFeeComputed = $developmentFeeRate * ($totalForFee ?? 0);
 
         // Dedicated registration receipt is stored in separate table.
         $newRegisterReceipt = $sangh->registrationReceipt;
@@ -175,6 +223,13 @@ class SanghController extends Controller
                 'receipt_year' => $registrationYear,
                 'is_paid' => false,
             ]);
+        }
+
+        if ($newRegisterReceipt) {
+            // Always reflect the current fee-slab configuration, not whatever was last saved.
+            $newRegisterReceipt->admission_fee = $admissionFeeStd;
+            $newRegisterReceipt->annual_fee = $annualFeeComputed;
+            $newRegisterReceipt->development_fee = $developmentFeeComputed;
         }
 
         // Only show renewals that have been actively used (any meaningful data entered)
@@ -208,8 +263,6 @@ class SanghController extends Controller
         $validated = $request->validate([
             'status' => 'required|in:paid,unpaid',
             'feskcom_receipt_date' => 'nullable|date',
-            'annual_fee' => 'nullable|numeric|min:0',
-            'development_fee' => 'nullable|numeric|min:0',
             'penalty_fee' => 'nullable|numeric|min:0',
             'paid_amount' => 'nullable|numeric|min:0',
         ]);
@@ -220,6 +273,13 @@ class SanghController extends Controller
             ? null
             : (($maleMembers ?? 0) + ($femaleMembers ?? 0));
 
+        // प्रवेश शुल्क / वार्षिक शुल्क / विकास निधी शुल्क are never entered manually —
+        // always derived from the admin-configured sangh fee settings/slabs.
+        $admissionFee = (float) Setting::getValue('sangh_admission_fee', 0);
+        $annualFee = SanghFeeSlab::annualFeeForMemberCount($totalMembers) ?? 0;
+        $developmentFeeRate = (float) Setting::getValue('sangh_development_fee_rate', 0);
+        $developmentFee = $developmentFeeRate * ($totalMembers ?? 0);
+
         $year = $this->intOrNull($sangh->registration_year) ?? (int) date('Y');
 
         $receipt = SanghRegistrationReceipt::query()->firstOrCreate(
@@ -227,23 +287,27 @@ class SanghController extends Controller
             ['receipt_year' => $year, 'is_paid' => false]
         );
 
-        // Auto-assign receipt number once, never overwrite
-        if (empty($receipt->feskcom_receipt_no)) {
+        // Entering the receipt date marks it paid and auto-assigns the receipt number (once, never overwritten)
+        $hasReceiptDate = !empty($validated['feskcom_receipt_date']);
+        $isPaid = $hasReceiptDate ? true : $validated['status'] === 'paid';
+
+        if (empty($receipt->feskcom_receipt_no) && $hasReceiptDate) {
             $receipt->feskcom_receipt_no = 'FSNEW/' . $receipt->id;
             $receipt->save();
         }
 
         $receipt->update([
             'receipt_year' => $year,
-            'is_paid' => $validated['status'] === 'paid',
+            'is_paid' => $isPaid,
             'feskcom_receipt_no' => $receipt->feskcom_receipt_no,
             'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
             'user_id' => auth()->id(),
             'male_members' => $maleMembers,
             'female_members' => $femaleMembers,
             'total_members' => $totalMembers,
-            'annual_fee' => $validated['annual_fee'] ?? null,
-            'development_fee' => $validated['development_fee'] ?? null,
+            'annual_fee' => $annualFee,
+            'admission_fee' => $admissionFee,
+            'development_fee' => $developmentFee,
             'penalty_fee' => $validated['penalty_fee'] ?? null,
             'paid_amount' => $validated['paid_amount'] ?? null,
         ]);
@@ -255,6 +319,7 @@ class SanghController extends Controller
     public function update(Request $request, Sangh $sangh)
     {
         $validated = $request->validate($this->rules(false));
+        $this->assertMinimumMembers($validated);
 
         $selectedVibhag = $validated['pradeshik_vibhag'] ?? null;
         $selectedDistrict = $validated['district'] ?? null;
@@ -656,12 +721,21 @@ class SanghController extends Controller
             'feskcom_receipt_date' => 'nullable|date',
             'male_members' => 'nullable|integer|min:0',
             'female_members' => 'nullable|integer|min:0',
-            'total_members' => 'nullable|integer|min:0',
-            'annual_fee' => 'nullable|numeric|min:0',
-            'development_fee' => 'nullable|numeric|min:0',
             'penalty_fee' => 'nullable|numeric|min:0',
             'paid_amount' => 'nullable|numeric|min:0',
         ]);
+
+        $maleMembers = $validated['male_members'] ?? null;
+        $femaleMembers = $validated['female_members'] ?? null;
+        $totalMembers = ($maleMembers === null && $femaleMembers === null)
+            ? null
+            : (($maleMembers ?? 0) + ($femaleMembers ?? 0));
+
+        // वार्षिक शुल्क / विकास निधी शुल्क are never entered manually —
+        // always derived from the admin-configured sangh fee settings/slabs.
+        $annualFee = SanghFeeSlab::annualFeeForMemberCount($totalMembers) ?? 0;
+        $developmentFeeRate = (float) Setting::getValue('sangh_development_fee_rate', 0);
+        $developmentFee = $developmentFeeRate * ($totalMembers ?? 0);
 
         $renewal = SanghRenewal::query()->firstOrCreate(
             ['sangh_id' => $sangh->id, 'renewal_year' => $year],
@@ -679,11 +753,11 @@ class SanghController extends Controller
             'feskcom_receipt_no' => $renewal->feskcom_receipt_no,
             'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
             'user_id' => auth()->id(),
-            'male_members' => $validated['male_members'] ?? null,
-            'female_members' => $validated['female_members'] ?? null,
-            'total_members' => $validated['total_members'] ?? null,
-            'annual_fee' => $validated['annual_fee'] ?? null,
-            'development_fee' => $validated['development_fee'] ?? null,
+            'male_members' => $maleMembers,
+            'female_members' => $femaleMembers,
+            'total_members' => $totalMembers,
+            'annual_fee' => $annualFee,
+            'development_fee' => $developmentFee,
             'penalty_fee' => $validated['penalty_fee'] ?? null,
             'paid_amount' => $validated['paid_amount'] ?? null,
         ]);

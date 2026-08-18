@@ -33,6 +33,21 @@
     </form>
 </div>
 
+{{-- Sangh Fee Slabs --}}
+<div class="container mt-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h5 class="mb-1">Sangh Fee Slabs</h5>
+                <p class="text-muted mb-0 small">Manage प्रवेश शुल्क, वार्षिक शुल्क (by member count) and विकास निधी शुल्क used in Sangh registrations.</p>
+            </div>
+            <a href="{{ route('settings.sangh_fees.edit') }}" class="btn btn-primary btn-sm" data-perm="sangh_fee.edit|sangh_fee.update">
+                <i class="fa fa-cog"></i> Manage Fee Slabs
+            </a>
+        </div>
+    </div>
+</div>
+
 {{-- Permission Manager --}}
 <div class="container mt-5">
     <h3>User Permissions Management</h3>
