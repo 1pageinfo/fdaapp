@@ -22,7 +22,7 @@
     $developmentFeeRateForRenewal = (float) \App\Models\Setting::getValue('sangh_development_fee_rate', 0);
 
     $masterRows = [
-        ['वर्ष', $sangh->registration_year],
+        ['वर्ष', \App\Providers\AppServiceProvider::financialYear($sangh->registration_year)],
         ['संघाचे नाव', $sangh->name_of_sangh],
         ['श्रेणी', $sangh->category_code],
         ['संघ प्रकार', $sangh->sangh_type_code],
@@ -57,6 +57,24 @@
             <p class="text-muted mb-0 details-subtitle">Complete profile and renewal records</p>
         </div>
         <div class="d-flex flex-wrap gap-2 no-print">
+            @if($prevSangh)
+                <a href="{{ route('sanghs.show', $prevSangh->id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="fa fa-chevron-left"></i> Previous
+                </a>
+            @else
+                <button type="button" class="btn btn-sm btn-outline-primary" disabled>
+                    <i class="fa fa-chevron-left"></i> Previous
+                </button>
+            @endif
+            @if($nextSangh)
+                <a href="{{ route('sanghs.show', $nextSangh->id) }}" class="btn btn-sm btn-outline-primary">
+                    Next <i class="fa fa-chevron-right"></i>
+                </a>
+            @else
+                <button type="button" class="btn btn-sm btn-outline-primary" disabled>
+                    Next <i class="fa fa-chevron-right"></i>
+                </button>
+            @endif
             <a href="{{ route('sanghs.edit', $sangh) }}" class="btn btn-sm btn-primary">
                 <i class="fa fa-edit"></i> Edit
             </a>
@@ -115,6 +133,34 @@
 
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-header bg-light border-bottom d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fa fa-landmark text-primary"></i> प्रादेशिक विभागाने घेतलेल्या रकमेचे तपशील</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 details-table">
+                <tbody>
+                    <tr>
+                        <th>प्रवेश शुल्क</th>
+                        <td>{{ $sangh->pradeshik_admission_fee !== null ? '₹ ' . number_format($sangh->pradeshik_admission_fee, 2) : '-' }}</td>
+                    </tr>
+                    <tr>
+                        <th>वार्षिक शुल्क</th>
+                        <td>{{ $sangh->pradeshik_annual_fee !== null ? '₹ ' . number_format($sangh->pradeshik_annual_fee, 2) : '-' }}</td>
+                    </tr>
+                    <tr>
+                        <th>विकास निधी शुल्क</th>
+                        <td>{{ $sangh->pradeshik_development_fee !== null ? '₹ ' . number_format($sangh->pradeshik_development_fee, 2) : '-' }}</td>
+                    </tr>
+                    <tr class="table-warning">
+                        <th>एकूण रक्कम</th>
+                        <td><strong>₹ {{ number_format(($sangh->pradeshik_admission_fee ?? 0) + ($sangh->pradeshik_annual_fee ?? 0) + ($sangh->pradeshik_development_fee ?? 0), 2) }}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-light border-bottom d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fa fa-file-text-o text-primary"></i> New register Sangh Receipt</h5>
         </div>
         @if($newRegisterReceipt)
@@ -132,7 +178,9 @@
                         <th>प्रवेश शुल्क</th>
                         <th>वार्षिक शुल्क</th>
                         <th>विकास निधी शुल्क</th>
+                        <th>एकूण रक्कम</th>
                         <th>पावती रक्कम (भरलेली)</th>
+                        <th>बाकी रक्कम</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -140,8 +188,12 @@
                     <form id="newRegisterReceiptForm" action="{{ route('sanghs.registration_receipt.update', $sangh) }}" method="POST" class="d-none">
                         @csrf
                     </form>
+                    @php
+                        $newRegisterTotal = ($newRegisterReceipt->admission_fee ?? 0) + ($newRegisterReceipt->annual_fee ?? 0) + ($newRegisterReceipt->development_fee ?? 0);
+                        $newRegisterBalance = $newRegisterTotal - ($newRegisterReceipt->paid_amount ?? 0);
+                    @endphp
                     <tr>
-                        <td><strong>{{ $newRegisterReceipt->receipt_year ?? $registrationYear }}</strong></td>
+                        <td><strong>@fy($newRegisterReceipt->receipt_year ?? $registrationYear)</strong></td>
                         <td>
                             <select name="status" class="form-select form-select-sm" form="newRegisterReceiptForm">
                                 <option value="paid" @selected($newRegisterReceipt->is_paid)>Paid</option>
@@ -156,7 +208,9 @@
                         <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->admission_fee }}" disabled></td>
                         <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->annual_fee }}" disabled></td>
                         <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->development_fee }}" disabled></td>
+                        <td><input type="number" class="form-control form-control-sm bg-light fw-bold" value="{{ number_format($newRegisterTotal, 2) }}" disabled></td>
                         <td><input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->paid_amount }}" form="newRegisterReceiptForm"></td>
+                        <td><input type="number" class="form-control form-control-sm {{ $newRegisterBalance > 0 ? 'bg-danger-subtle text-danger fw-bold' : 'bg-success-subtle text-success fw-bold' }}" value="{{ number_format($newRegisterBalance, 2) }}" disabled></td>
                         <td class="text-nowrap">
                             <button type="submit" class="btn btn-sm btn-success mb-1" form="newRegisterReceiptForm">
                                 <i class="fa fa-save"></i> Save
@@ -186,7 +240,7 @@
                 <select name="renewal_year" class="form-select form-select-sm" style="width:120px;" required>
                     <option value="">Year</option>
                     @foreach($availableYears as $y)
-                        <option value="{{ $y }}">{{ $y }}</option>
+                        <option value="{{ $y }}">@fy($y)</option>
                     @endforeach
                 </select>
                 <button type="submit" class="btn btn-sm btn-primary text-nowrap">
@@ -212,7 +266,9 @@
                         <th>वार्षिक शुल्क</th>
                         <th>विकास निधी शुल्क</th>
                         <th>दंड शुल्क</th>
+                        <th>एकूण रक्कम</th>
                         <th>पावती रक्कम (भरलेली)</th>
+                        <th>बाकी रक्कम</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -221,7 +277,7 @@
                         <tr>
                             <form action="{{ route('sanghs.renewals.update', [$sangh, $renewal->renewal_year]) }}" method="POST">
                                 @csrf
-                                <td><strong>{{ $renewal->renewal_year }}</strong></td>
+                                <td><strong>@fy($renewal->renewal_year)</strong></td>
                                 <td>
                                     <select name="status" class="form-select form-select-sm">
                                         <option value="paid" @selected($renewal->is_paid)>Paid</option>
@@ -236,7 +292,9 @@
                                 <td><input type="number" class="form-control form-control-sm bg-light renewal-annual" value="{{ $renewal->annual_fee }}" disabled></td>
                                 <td><input type="number" class="form-control form-control-sm bg-light renewal-development" value="{{ $renewal->development_fee }}" disabled></td>
                                 <td><input type="number" name="penalty_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $renewal->penalty_fee }}"></td>
+                                <td><input type="number" class="form-control form-control-sm bg-light fw-bold" value="{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0), 2) }}" disabled></td>
                                 <td><input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm" value="{{ $renewal->paid_amount }}"></td>
+                                <td><input type="number" class="form-control form-control-sm {{ (($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0) - ($renewal->paid_amount ?? 0)) > 0 ? 'bg-danger-subtle text-danger fw-bold' : 'bg-success-subtle text-success fw-bold' }}" value="{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0) - ($renewal->paid_amount ?? 0), 2) }}" disabled></td>
                                 <td class="text-nowrap">
                                     <button type="submit" class="btn btn-sm btn-success mb-1">
                                         <i class="fa fa-save"></i> Save
@@ -248,7 +306,7 @@
                                     @endif
                             </form>
                             <form action="{{ route('sanghs.renewals.destroy', [$sangh, $renewal->renewal_year]) }}" method="POST" class="d-inline"
-                                  onsubmit="return confirm('Delete {{ $renewal->renewal_year }} renewal record?')">
+                                  onsubmit="return confirm('Delete @fy($renewal->renewal_year) renewal record?')">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-danger mb-1">
@@ -270,7 +328,7 @@
                 <div class="modal-content">
                     <div class="modal-header bg-primary text-white">
                         <h5 class="modal-title">
-                            <i class="fa fa-receipt"></i> Receipt - {{ $newRegisterReceipt->receipt_year ?? $registrationYear }}
+                            <i class="fa fa-receipt"></i> Receipt - @fy($newRegisterReceipt->receipt_year ?? $registrationYear)
                         </h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
@@ -289,7 +347,7 @@
                                     <p><strong>जिल्हा:</strong> {{ $display($sangh->district) }}</p>
                                 </div>
                                 <div class="col-md-6 text-md-end">
-                                    <p><strong>वर्ष:</strong> {{ $newRegisterReceipt->receipt_year ?? $registrationYear }}</p>
+                                    <p><strong>वर्ष:</strong> @fy($newRegisterReceipt->receipt_year ?? $registrationYear)</p>
                                     <p><strong>दिनांक:</strong> {{ now()->format('d-m-Y') }}</p>
                                     <p>
                                         <strong>पावती स्थिति:</strong>
@@ -329,6 +387,13 @@
                                             <td><strong class="text-success">भरलेली रक्कम</strong></td>
                                             <td class="text-end"><strong class="text-success">₹ {{ number_format($newRegisterReceipt->paid_amount ?? 0, 2) }}</strong></td>
                                         </tr>
+                                        @php
+                                            $newRegisterModalBalance = (($newRegisterReceipt->annual_fee ?? 0) + ($newRegisterReceipt->admission_fee ?? 0) + ($newRegisterReceipt->development_fee ?? 0)) - ($newRegisterReceipt->paid_amount ?? 0);
+                                        @endphp
+                                        <tr>
+                                            <td><strong class="{{ $newRegisterModalBalance > 0 ? 'text-danger' : 'text-success' }}">बाकी रक्कम</strong></td>
+                                            <td class="text-end"><strong class="{{ $newRegisterModalBalance > 0 ? 'text-danger' : 'text-success' }}">₹ {{ number_format($newRegisterModalBalance, 2) }}</strong></td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -367,7 +432,7 @@
                 <div class="modal-content">
                     <div class="modal-header bg-primary text-white">
                         <h5 class="modal-title">
-                            <i class="fa fa-receipt"></i> Receipt - {{ $renewal->renewal_year }}
+                            <i class="fa fa-receipt"></i> Receipt - @fy($renewal->renewal_year)
                         </h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
@@ -386,7 +451,7 @@
                                     <p><strong>जिल्हा:</strong> {{ $display($sangh->district) }}</p>
                                 </div>
                                 <div class="col-md-6 text-md-end">
-                                    <p><strong>वर्ष:</strong> {{ $renewal->renewal_year }}</p>
+                                    <p><strong>वर्ष:</strong> @fy($renewal->renewal_year)</p>
                                     <p><strong>दिनांक:</strong> {{ now()->format('d-m-Y') }}</p>
                                     <p>
                                         <strong>पावती स्थिति:</strong>
@@ -425,6 +490,13 @@
                                         <tr>
                                             <td><strong class="text-success">भरलेली रक्कम</strong></td>
                                             <td class="text-end"><strong class="text-success">₹ {{ number_format($renewal->paid_amount ?? 0, 2) }}</strong></td>
+                                        </tr>
+                                        @php
+                                            $renewalModalBalance = (($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0)) - ($renewal->paid_amount ?? 0);
+                                        @endphp
+                                        <tr>
+                                            <td><strong class="{{ $renewalModalBalance > 0 ? 'text-danger' : 'text-success' }}">बाकी रक्कम</strong></td>
+                                            <td class="text-end"><strong class="{{ $renewalModalBalance > 0 ? 'text-danger' : 'text-success' }}">₹ {{ number_format($renewalModalBalance, 2) }}</strong></td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -509,6 +581,11 @@
         }
 
         @media print {
+            @page {
+                size: A4 landscape;
+                margin: 8mm;
+            }
+
             .no-print,
             .modal,
             .btn,
@@ -537,6 +614,53 @@
 
             body {
                 background: #fff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* Let wide tables print in full instead of being clipped by the scroll container */
+            .sangh-show-page .table-responsive {
+                overflow: visible !important;
+            }
+
+            .sangh-show-page .card {
+                box-shadow: none !important;
+                border: 1px solid #dee2e6 !important;
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+
+            .sangh-show-page table {
+                width: 100% !important;
+                table-layout: auto !important;
+                font-size: 9px !important;
+            }
+
+            .sangh-show-page .renewal-table th,
+            .sangh-show-page .renewal-table td {
+                padding: 2px 3px !important;
+                white-space: normal !important;
+            }
+
+            /* Remove the fixed min-width that forces horizontal overflow on print */
+            .sangh-show-page .renewal-table input,
+            .sangh-show-page .renewal-table select {
+                min-width: 0 !important;
+                width: 100% !important;
+                font-size: 9px !important;
+                padding: 1px 2px !important;
+                border: none !important;
+                background: transparent !important;
+                -webkit-appearance: none;
+                appearance: none;
+            }
+
+            .sangh-show-page input[disabled],
+            .sangh-show-page select[disabled],
+            .sangh-show-page input[readonly] {
+                color: #000 !important;
+                -webkit-text-fill-color: #000 !important;
+                opacity: 1 !important;
             }
         }
 

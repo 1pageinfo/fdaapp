@@ -255,7 +255,28 @@ class SanghController extends Controller
             fn($y) => !in_array($y, $usedYears, true)
         ));
 
-        return view('sanghs.show', compact('sangh', 'renewals', 'availableYears', 'newRegisterReceipt', 'registrationYear'));
+        // Quick prev/next navigation between sangh records (ordered by sr. no., same as the listing).
+        $prevSangh = Sangh::query()
+            ->where(function ($q) use ($sangh) {
+                $q->where('sangh_sr_no', '<', $sangh->sangh_sr_no)
+                    ->orWhere(function ($q2) use ($sangh) {
+                        $q2->where('sangh_sr_no', $sangh->sangh_sr_no)->where('id', '<', $sangh->id);
+                    });
+            })
+            ->orderByDesc('sangh_sr_no')->orderByDesc('id')
+            ->first(['id']);
+
+        $nextSangh = Sangh::query()
+            ->where(function ($q) use ($sangh) {
+                $q->where('sangh_sr_no', '>', $sangh->sangh_sr_no)
+                    ->orWhere(function ($q2) use ($sangh) {
+                        $q2->where('sangh_sr_no', $sangh->sangh_sr_no)->where('id', '>', $sangh->id);
+                    });
+            })
+            ->orderBy('sangh_sr_no')->orderBy('id')
+            ->first(['id']);
+
+        return view('sanghs.show', compact('sangh', 'renewals', 'availableYears', 'newRegisterReceipt', 'registrationYear', 'prevSangh', 'nextSangh'));
     }
 
     public function updateRegistrationReceipt(Request $request, Sangh $sangh)
@@ -818,6 +839,9 @@ class SanghController extends Controller
             'male' => 'nullable|integer|min:0',
             'female' => 'nullable|integer|min:0',
             'total_members' => 'nullable|integer|min:0',
+            'pradeshik_admission_fee' => 'nullable|numeric|min:0',
+            'pradeshik_annual_fee' => 'nullable|numeric|min:0',
+            'pradeshik_development_fee' => 'nullable|numeric|min:0',
             'president' => 'nullable|string|max:255',
             'president_phone' => 'nullable|string|max:30',
             'president_whatsapp' => 'nullable|string|max:30',
@@ -856,6 +880,9 @@ class SanghController extends Controller
             'male' => $male,
             'female' => $female,
             'total_members' => $totalMembers,
+            'pradeshik_admission_fee' => $validated['pradeshik_admission_fee'] ?? null,
+            'pradeshik_annual_fee' => $validated['pradeshik_annual_fee'] ?? null,
+            'pradeshik_development_fee' => $validated['pradeshik_development_fee'] ?? null,
             'president' => $validated['president'] ?? null,
             'president_phone' => $validated['president_phone'] ?? null,
             'president_whatsapp' => $validated['president_whatsapp'] ?? null,

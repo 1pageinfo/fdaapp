@@ -263,6 +263,26 @@
 
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-body py-3">
+        <h6 class="text-muted text-uppercase mb-3" style="font-size:12px;">प्रादेशिक विभागाने घेतलेल्या रकमेचे तपशील (fees taken by Pradeshik Vibhag)</h6>
+        <div class="form-row mb-0">
+            <div class="form-group col-md-4">
+                <label>प्रवेश शुल्क</label>
+                <input type="number" min="0" step="0.01" name="pradeshik_admission_fee" class="form-control" value="{{ old('pradeshik_admission_fee', $sangh->pradeshik_admission_fee ?? '') }}">
+            </div>
+            <div class="form-group col-md-4">
+                <label>वार्षिक शुल्क</label>
+                <input type="number" min="0" step="0.01" name="pradeshik_annual_fee" class="form-control" value="{{ old('pradeshik_annual_fee', $sangh->pradeshik_annual_fee ?? '') }}">
+            </div>
+            <div class="form-group col-md-4">
+                <label>विकास निधी शुल्क</label>
+                <input type="number" min="0" step="0.01" name="pradeshik_development_fee" class="form-control" value="{{ old('pradeshik_development_fee', $sangh->pradeshik_development_fee ?? '') }}">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
         <h6 class="text-muted text-uppercase mb-3" style="font-size:12px;">Fee Estimate (as per Fee Slabs)</h6>
         <div class="form-row align-items-end mb-0">
             <div class="form-group col-md-3 mb-0">

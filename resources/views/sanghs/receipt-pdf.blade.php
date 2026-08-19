@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Receipt - {{ $renewal->renewal_year }}</title>
+    <title>Receipt - @fy($renewal->renewal_year)</title>
     <style>
         * {
             margin: 0;
@@ -194,7 +194,7 @@
             </div>
             <div class="detail-row">
                 <div class="detail-label">वर्ष (Year):</div>
-                <div class="detail-value">{{ $renewal->renewal_year }}</div>
+                <div class="detail-value">@fy($renewal->renewal_year)</div>
             </div>
             <div class="detail-row">
                 <div class="detail-label">दिनांक (Date):</div>

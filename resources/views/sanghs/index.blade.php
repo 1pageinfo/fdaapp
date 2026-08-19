@@ -89,7 +89,7 @@
                         <select name="year" class="form-select form-select-sm">
                             <option value="">All Years</option>
                             @foreach($years as $yr)
-                                <option value="{{ $yr }}" @selected(request('year') == $yr)>{{ $yr }}</option>
+                                <option value="{{ $yr }}" @selected(request('year') == $yr)>@fy($yr)</option>
                             @endforeach
                         </select>
                     </div>
@@ -109,7 +109,7 @@
                         <select name="register_receipt_year" class="form-select form-select-sm">
                             <option value="">All Years</option>
                             @foreach($registerReceiptYears as $yr)
-                                <option value="{{ $yr }}" @selected(request('register_receipt_year') == $yr)>{{ $yr }}</option>
+                                <option value="{{ $yr }}" @selected(request('register_receipt_year') == $yr)>@fy($yr)</option>
                             @endforeach
                         </select>
                     </div>
@@ -118,7 +118,7 @@
                         <select name="renewal_receipt_year" class="form-select form-select-sm">
                             <option value="">All Years</option>
                             @foreach($renewalReceiptYears as $yr)
-                                <option value="{{ $yr }}" @selected(request('renewal_receipt_year') == $yr)>{{ $yr }}</option>
+                                <option value="{{ $yr }}" @selected(request('renewal_receipt_year') == $yr)>@fy($yr)</option>
                             @endforeach
                         </select>
                     </div>

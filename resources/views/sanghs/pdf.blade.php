@@ -24,7 +24,7 @@
             <tr><td>Unique संघाचा अनु क्र.</td><td>{{ $sangh->unique_ref_no }}</td></tr>
             <tr><td>प्रादेशिक विभागातील संघाचा अनु क्र.</td><td>{{ $sangh->pradeshik_ref_no }}</td></tr>
             <tr><td>जिल्हा मधे संघाचा अनु. क्र.</td><td>{{ $sangh->district_ref_no }}</td></tr>
-            <tr><td>वर्ष</td><td>{{ $sangh->registration_year }}</td></tr>
+            <tr><td>वर्ष</td><td>@fy($sangh->registration_year)</td></tr>
             <tr><td>संघाचे नाव</td><td>{{ $sangh->name_of_sangh }}</td></tr>
             <tr><td>श्रेणी</td><td>{{ $sangh->category_code }}</td></tr>
             <tr><td>संघ प्रकार</td><td>{{ $sangh->sangh_type_code }}</td></tr>
