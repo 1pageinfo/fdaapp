@@ -233,6 +233,15 @@
               <span class="menu-title">Manage Users</span>
             </a>
           </li>
+
+          {{-- Activity Logs --}}
+          <li class="nav-item">
+            <a class="nav-link {{ request()->is('admin/activity-logs*') ? 'active' : '' }}" href="{{ route('admin.activity_logs.index') }}"
+              data-perm="users.view|manage-users">
+              <i class="fa fa-history menu-icon"></i>
+              <span class="menu-title">Activity Logs</span>
+            </a>
+          </li>
           </br></br></br></br></br>
 
           <li class="nav-item mt-3 px-3 text-white">
@@ -370,7 +379,9 @@
         });
       }
 
-      document.addEventListener('DOMContentLoaded', gateHideByPermission);
+      // Execute immediately since the DOM for the sidebar is already parsed above this script.
+      // This prevents the visual "flash" of unauthorized menu items.
+      gateHideByPermission();
     </script>
     @yield('scripts')
     @stack('scripts')

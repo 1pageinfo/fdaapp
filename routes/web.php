@@ -16,6 +16,7 @@ use App\Http\Controllers\SanghController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Auth\Admin\UserRoleController;
+use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\LinkController;
@@ -90,6 +91,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/user-roles', [UserRoleController::class, 'index'])->name('admin.user_roles.index');
         Route::put('/user-roles/{user}', [UserRoleController::class, 'update'])->name('admin.user_roles.update');
         Route::delete('/user-roles/{user}', [UserRoleController::class, 'destroy'])->name('admin.user_roles.destroy');
+        Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('admin.activity_logs.index');
     });
 
 

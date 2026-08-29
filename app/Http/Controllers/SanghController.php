@@ -90,25 +90,45 @@ class SanghController extends Controller
             $query->whereDate('created_at', '<=', $request->input('to_date'));
         }
 
+        // Ownership filter
+        if ($request->filled('ownership')) {
+            $ownership = $request->input('ownership');
+            if ($ownership === 'created_by_me') {
+                $query->where('created_by', auth()->id());
+            } elseif ($ownership === 'assigned_to_me') {
+                $query->where('assigned_to', auth()->id());
+            }
+        }
+
         // Register Receipts filter (Year with payment status)
         if ($request->filled('register_receipt_year')) {
-            $isPaid = $request->input('payment_status') === 'paid';
-            $query->whereHas('registrationReceipt', function ($receiptQuery) use ($request, $isPaid) {
+            $query->whereHas('registrationReceipt', function ($receiptQuery) use ($request) {
                 $receiptQuery->where('receipt_year', (int) $request->input('register_receipt_year'));
                 if ($request->filled('payment_status')) {
-                    $receiptQuery->where('is_paid', $isPaid);
+                    $receiptQuery->where('status', $request->input('payment_status'));
                 }
             });
         }
 
         // Renewal Receipts filter (Year with payment status)
         if ($request->filled('renewal_receipt_year')) {
-            $isPaid = $request->input('payment_status') === 'paid';
-            $query->whereHas('renewals', function ($renewalQuery) use ($request, $isPaid) {
+            $query->whereHas('renewals', function ($renewalQuery) use ($request) {
                 $renewalQuery->where('renewal_year', (int) $request->input('renewal_receipt_year'));
                 if ($request->filled('payment_status')) {
-                    $renewalQuery->where('is_paid', $isPaid);
+                    $renewalQuery->where('status', $request->input('payment_status'));
                 }
+            });
+        }
+
+        // If ONLY payment_status is selected (no years), filter across both
+        if ($request->filled('payment_status') && !$request->filled('register_receipt_year') && !$request->filled('renewal_receipt_year')) {
+            $status = $request->input('payment_status');
+            $query->where(function ($q) use ($status) {
+                $q->whereHas('registrationReceipt', function ($receiptQuery) use ($status) {
+                    $receiptQuery->where('status', $status);
+                })->orWhereHas('renewals', function ($renewalQuery) use ($status) {
+                    $renewalQuery->where('status', $status);
+                });
             });
         }
 
@@ -128,7 +148,8 @@ class SanghController extends Controller
 
     public function create()
     {
-        return view('sanghs.create', $this->feeFormData());
+        $users = \App\Models\User::all();
+        return view('sanghs.create', array_merge($this->feeFormData(), compact('users')));
     }
 
     /**
@@ -194,7 +215,8 @@ class SanghController extends Controller
 
     public function edit(Sangh $sangh)
     {
-        return view('sanghs.edit', array_merge(compact('sangh'), $this->feeFormData()));
+        $users = \App\Models\User::all();
+        return view('sanghs.edit', array_merge(compact('sangh', 'users'), $this->feeFormData()));
     }
     public function show(Sangh $sangh)
     {
@@ -282,7 +304,7 @@ class SanghController extends Controller
     public function updateRegistrationReceipt(Request $request, Sangh $sangh)
     {
         $validated = $request->validate([
-            'status' => 'required|in:paid,unpaid',
+            'status' => 'required|in:unpaid,paid,information_approved,sangh_registered',
             'feskcom_receipt_date' => 'nullable|date',
             'penalty_fee' => 'nullable|numeric|min:0',
             'paid_amount' => 'nullable|numeric|min:0',
@@ -305,12 +327,16 @@ class SanghController extends Controller
 
         $receipt = SanghRegistrationReceipt::query()->firstOrCreate(
             ['sangh_id' => $sangh->id],
-            ['receipt_year' => $year, 'is_paid' => false]
+            ['receipt_year' => $year, 'is_paid' => false, 'status' => 'unpaid']
         );
 
         // Entering the receipt date marks it paid and auto-assigns the receipt number (once, never overwritten)
         $hasReceiptDate = !empty($validated['feskcom_receipt_date']);
-        $isPaid = $hasReceiptDate ? true : $validated['status'] === 'paid';
+        $status = $validated['status'];
+        if ($hasReceiptDate && $status === 'unpaid') {
+            $status = 'paid';
+        }
+        $isPaid = in_array($status, ['paid', 'information_approved', 'sangh_registered']);
 
         if (empty($receipt->feskcom_receipt_no) && $hasReceiptDate) {
             $receipt->feskcom_receipt_no = 'FSNEW/' . $receipt->id;
@@ -320,6 +346,7 @@ class SanghController extends Controller
         $receipt->update([
             'receipt_year' => $year,
             'is_paid' => $isPaid,
+            'status' => $status,
             'feskcom_receipt_no' => $receipt->feskcom_receipt_no,
             'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
             'user_id' => auth()->id(),
@@ -738,7 +765,7 @@ class SanghController extends Controller
     public function updateRenewal(Request $request, Sangh $sangh, int $year)
     {
         $validated = $request->validate([
-            'status' => 'required|in:paid,unpaid',
+            'status' => 'required|in:unpaid,paid,information_approved,sangh_registered',
             'feskcom_receipt_date' => 'nullable|date',
             'male_members' => 'nullable|integer|min:0',
             'female_members' => 'nullable|integer|min:0',
@@ -760,7 +787,7 @@ class SanghController extends Controller
 
         $renewal = SanghRenewal::query()->firstOrCreate(
             ['sangh_id' => $sangh->id, 'renewal_year' => $year],
-            ['is_paid' => false]
+            ['is_paid' => false, 'status' => 'unpaid']
         );
 
         // Auto-assign receipt number once, never overwrite
@@ -769,8 +796,16 @@ class SanghController extends Controller
             $renewal->save();
         }
 
+        $hasReceiptDate = !empty($validated['feskcom_receipt_date']);
+        $status = $validated['status'];
+        if ($hasReceiptDate && $status === 'unpaid') {
+            $status = 'paid';
+        }
+        $isPaid = in_array($status, ['paid', 'information_approved', 'sangh_registered']);
+
         $renewal->update([
-            'is_paid' => $validated['status'] === 'paid',
+            'is_paid' => $isPaid,
+            'status' => $status,
             'feskcom_receipt_no' => $renewal->feskcom_receipt_no,
             'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
             'user_id' => auth()->id(),
@@ -817,22 +852,23 @@ class SanghController extends Controller
 
     private function rules(bool $isCreate = true): array
     {
-        $nameRule = $isCreate ? 'required|string|max:255' : 'nullable|string|max:255';
+        $nameRule = $isCreate ? 'required|string|max:255|not_regex:/[0-9]/' : 'nullable|string|max:255|not_regex:/[0-9]/';
 
         return [
+            'assigned_to' => 'nullable|exists:users,id',
             'name_of_sangh' => $nameRule,
             'registration_year' => 'nullable|integer|min:1900|max:' . date('Y'),
             'category_code' => 'required|string|in:R,U,A',
             'sangh_type_code' => 'required|string|in:G,F',
-            'pradeshik_vibhag' => 'required|string|max:255',
+            'pradeshik_vibhag' => 'required|string|max:255|not_regex:/[0-9]/',
             'pradeshik_vibhag_code' => 'nullable|string|max:10',
-            'district' => 'required|string|max:255',
+            'district' => 'required|string|max:255|not_regex:/[0-9]/',
             'district_code' => 'nullable|string|max:10',
-            'taluka' => 'nullable|string|max:255',
-            'village' => 'nullable|string|max:255',
-            'city' => 'nullable|string|max:255',
+            'taluka' => 'nullable|string|max:255|not_regex:/[0-9]/',
+            'village' => 'nullable|string|max:255|not_regex:/[0-9]/',
+            'city' => 'nullable|string|max:255|not_regex:/[0-9]/',
             'mukkam_post' => 'nullable|string|max:255',
-            'pincode' => ['nullable', 'string', 'size:6', Rule::in(config('pincodes.allowed', []))],
+            'pincode' => ['nullable', 'digits:6', Rule::in(config('pincodes.allowed', []))],
             'address' => 'nullable|string',
             'road_path' => 'nullable|string|max:255',
             'ward_section' => 'nullable|string|max:255',
@@ -842,13 +878,15 @@ class SanghController extends Controller
             'pradeshik_admission_fee' => 'nullable|numeric|min:0',
             'pradeshik_annual_fee' => 'nullable|numeric|min:0',
             'pradeshik_development_fee' => 'nullable|numeric|min:0',
-            'president' => 'nullable|string|max:255',
-            'president_phone' => 'nullable|string|max:30',
-            'president_whatsapp' => 'nullable|string|max:30',
+            'president' => 'nullable|string|max:255|not_regex:/[0-9]/',
+            'president_phone' => 'nullable|digits:10',
+            'president_whatsapp' => 'nullable|digits:10',
             'president_email' => 'nullable|email|max:255',
-            'secretary' => 'nullable|string|max:255',
-            'secretary_phone' => 'nullable|string|max:30',
-            'secretary_whatsapp' => 'nullable|string|max:30',
+            'tel_no' => 'nullable|string|max:30',
+            'alt_tel_no' => 'nullable|string|max:30',
+            'secretary' => 'nullable|string|max:255|not_regex:/[0-9]/',
+            'secretary_phone' => 'nullable|digits:10',
+            'secretary_whatsapp' => 'nullable|digits:10',
             'secretary_email' => 'nullable|email|max:255',
             'email' => 'nullable|email|max:255',
         ];
@@ -861,6 +899,7 @@ class SanghController extends Controller
         $totalMembers = ($male === null && $female === null) ? null : (($male ?? 0) + ($female ?? 0));
 
         return [
+            'assigned_to' => $validated['assigned_to'] ?? null,
             'registration_year' => $validated['registration_year'] ?? null,
             'name_of_sangh' => $validated['name_of_sangh'] ?? null,
             'category_code' => $validated['category_code'] ?? null,
@@ -887,6 +926,8 @@ class SanghController extends Controller
             'president_phone' => $validated['president_phone'] ?? null,
             'president_whatsapp' => $validated['president_whatsapp'] ?? null,
             'president_email' => $validated['president_email'] ?? null,
+            'tel_no' => $validated['tel_no'] ?? null,
+            'alt_tel_no' => $validated['alt_tel_no'] ?? null,
             'secretary' => $validated['secretary'] ?? null,
             'secretary_phone' => $validated['secretary_phone'] ?? null,
             'secretary_whatsapp' => $validated['secretary_whatsapp'] ?? null,

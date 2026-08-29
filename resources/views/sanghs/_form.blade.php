@@ -1,3 +1,25 @@
+@if(auth()->check() && (auth()->user()->role === 'admin' || auth()->user()->role === 'superadmin'))
+<div class="card mb-4 border-info shadow-sm">
+    <div class="card-header bg-info text-white">
+        <i class="fa fa-user-circle"></i> Admin: Assign Form Ownership
+    </div>
+    <div class="card-body">
+        <div class="form-group mb-0">
+            <label>Assigned To User</label>
+            <select name="assigned_to" class="form-control">
+                <option value="">-- No specific user (Unassigned) --</option>
+                @foreach($users as $user)
+                    <option value="{{ $user->id }}" {{ old('assigned_to', $sangh->assigned_to ?? '') == $user->id ? 'selected' : '' }}>
+                        {{ $user->name }} ({{ $user->email }})
+                    </option>
+                @endforeach
+            </select>
+            <small class="form-text text-muted">Select a user to assign this Sangh form to them. They will be able to see it in their "Assigned to Me" filter.</small>
+        </div>
+    </div>
+</div>
+@endif
+
 <div class="form-row">
     <div class="form-group col-md-3">
         <label>वर्ष</label>

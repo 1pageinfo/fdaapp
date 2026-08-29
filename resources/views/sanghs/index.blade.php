@@ -65,77 +65,87 @@
         </div>
         <div class="card-body">
             <form method="GET" action="{{ route('sanghs.index') }}" id="filterForm">
-                <div class="row mb-3">
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">प्रादेशिक विभाग</label>
-                        <select name="pradeshik_vibhag" class="form-select form-select-sm">
+                <div class="row g-3 mb-3">
+                    <div class="col-lg-2 col-md-3 col-sm-6">
+                        <label class="form-label fw-bold small text-muted mb-1">प्रादेशिक विभाग</label>
+                        <select name="pradeshik_vibhag" class="form-control form-control-sm shadow-none">
                             <option value="">All Vibhag</option>
                             @foreach($vibhags as $vibhag)
                                 <option value="{{ $vibhag }}" @selected(request('pradeshik_vibhag') == $vibhag)>{{ $vibhag }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">जिल्हा</label>
-                        <select name="district" class="form-select form-select-sm">
+                    <div class="col-lg-2 col-md-3 col-sm-6">
+                        <label class="form-label fw-bold small text-muted mb-1">जिल्हा</label>
+                        <select name="district" class="form-control form-control-sm shadow-none">
                             <option value="">All Districts</option>
                             @foreach($districts as $district)
                                 <option value="{{ $district }}" @selected(request('district') == $district)>{{ $district }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">Year</label>
-                        <select name="year" class="form-select form-select-sm">
+                    <div class="col-lg-2 col-md-2 col-sm-4">
+                        <label class="form-label fw-bold small text-muted mb-1">Year</label>
+                        <select name="year" class="form-control form-control-sm shadow-none">
                             <option value="">All Years</option>
                             @foreach($years as $yr)
                                 <option value="{{ $yr }}" @selected(request('year') == $yr)>@fy($yr)</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">From Date</label>
-                        <input type="date" name="from_date" value="{{ request('from_date') }}" class="form-control form-control-sm">
+                    <div class="col-lg-3 col-md-2 col-sm-4">
+                        <label class="form-label fw-bold small text-muted mb-1">From Date</label>
+                        <input type="date" name="from_date" value="{{ request('from_date') }}" class="form-control form-control-sm shadow-none">
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">To Date</label>
-                        <input type="date" name="to_date" value="{{ request('to_date') }}" class="form-control form-control-sm">
+                    <div class="col-lg-3 col-md-2 col-sm-4">
+                        <label class="form-label fw-bold small text-muted mb-1">To Date</label>
+                        <input type="date" name="to_date" value="{{ request('to_date') }}" class="form-control form-control-sm shadow-none">
                     </div>
                 </div>
 
-                <div class="row">
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">Register Receipts</label>
-                        <select name="register_receipt_year" class="form-select form-select-sm">
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-2 col-md-3 col-sm-6">
+                        <label class="form-label fw-bold small text-muted mb-1">Register Receipts</label>
+                        <select name="register_receipt_year" class="form-control form-control-sm shadow-none">
                             <option value="">All Years</option>
                             @foreach($registerReceiptYears as $yr)
                                 <option value="{{ $yr }}" @selected(request('register_receipt_year') == $yr)>@fy($yr)</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">Renewal Receipts</label>
-                        <select name="renewal_receipt_year" class="form-select form-select-sm">
+                    <div class="col-lg-2 col-md-3 col-sm-6">
+                        <label class="form-label fw-bold small text-muted mb-1">Renewal Receipts</label>
+                        <select name="renewal_receipt_year" class="form-control form-control-sm shadow-none">
                             <option value="">All Years</option>
                             @foreach($renewalReceiptYears as $yr)
                                 <option value="{{ $yr }}" @selected(request('renewal_receipt_year') == $yr)>@fy($yr)</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold small">Payment Status</label>
-                        <select name="payment_status" class="form-select form-select-sm">
+                    <div class="col-lg-2 col-md-2 col-sm-4">
+                        <label class="form-label fw-bold small text-muted mb-1">Status</label>
+                        <select name="payment_status" class="form-control form-control-sm shadow-none">
                             <option value="">All Status</option>
-                            <option value="paid" @selected(request('payment_status') == 'paid')>Paid</option>
                             <option value="unpaid" @selected(request('payment_status') == 'unpaid')>Unpaid</option>
+                            <option value="paid" @selected(request('payment_status') == 'paid')>Paid</option>
+                            <option value="information_approved" @selected(request('payment_status') == 'information_approved')>Information approved</option>
+                            <option value="sangh_registered" @selected(request('payment_status') == 'sangh_registered')>Sangh Registered</option>
                         </select>
                     </div>
-                    <div class="col-md-6 d-flex align-items-end gap-2">
-                        <button type="submit" class="btn btn-primary btn-sm">
-                            <i class="fa fa-search"></i> Apply Filters
+                    <div class="col-lg-2 col-md-2 col-sm-4">
+                        <label class="form-label fw-bold small text-muted mb-1">Ownership</label>
+                        <select name="ownership" class="form-control form-control-sm shadow-none">
+                            <option value="">All Forms</option>
+                            <option value="created_by_me" @selected(request('ownership') == 'created_by_me')>Created by Me</option>
+                            <option value="assigned_to_me" @selected(request('ownership') == 'assigned_to_me')>Assigned to Me</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-4 col-md-12 d-flex gap-2 mt-3 mt-lg-0 justify-content-lg-end">
+                        <button type="submit" class="btn btn-success btn-sm px-4 shadow-sm">
+                            <i class="fa fa-search me-1"></i> Apply Filters
                         </button>
-                        <a href="{{ route('sanghs.index') }}" class="btn btn-outline-secondary btn-sm">
-                            <i class="fa fa-redo"></i> Reset
+                        <a href="{{ route('sanghs.index') }}" class="btn btn-light btn-sm px-3 border shadow-sm">
+                            <i class="fa fa-redo me-1"></i> Reset
                         </a>
                     </div>
                 </div>
@@ -144,13 +154,16 @@
     </div>
 
     <!-- Seed Placeholders Button -->
-    <div class="mb-3">
-        <form action="{{ route('sanghs.seed_placeholders') }}" method="POST" onsubmit="return confirm('Add placeholder rows up to 6676?');" style="display: inline;">
+    <div class="mb-3 d-flex align-items-center">
+        <form action="{{ route('sanghs.seed_placeholders') }}" method="POST" onsubmit="return confirm('Add placeholder rows up to 6676?');" style="display: inline;" class="me-3">
             @csrf
-            <button class="btn btn-warning btn-sm">
-                <i class="fa fa-plus-square"></i> Pre-add Blank Sangh rows till 6676
+            <button class="btn btn-warning btn-sm shadow-sm">
+                <i class="fa fa-plus-square me-1"></i> Pre-add Blank Sangh rows till 6676
             </button>
         </form>
+        <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
+            <span class="text-secondary fw-semibold">Total Records: <strong class="text-dark">{{ $sanghs->total() }}</strong></span>
+        </div>
     </div>
 
     <!-- Data Table -->

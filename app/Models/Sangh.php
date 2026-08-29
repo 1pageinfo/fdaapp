@@ -4,10 +4,20 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Sangh extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logAll()
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
 
     protected $fillable = [
         'sangh_sr_no',
@@ -80,17 +90,27 @@ class Sangh extends Model
     ];
 
     public function creator()
-{
-    return $this->belongsTo(User::class, 'created_by')->withTrashed();
-}
+    {
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
 
-        public function renewals()
-        {
-            return $this->hasMany(SanghRenewal::class);
-        }
+    public function renewals(): HasMany
+    {
+        return $this->hasMany(SanghRenewal::class);
+    }
 
-        public function registrationReceipt()
-        {
-            return $this->hasOne(SanghRegistrationReceipt::class);
-        }
+    public function registrationReceipt()
+    {
+        return $this->hasOne(SanghRegistrationReceipt::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function assignedTo()
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
 }

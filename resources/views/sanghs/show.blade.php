@@ -21,6 +21,23 @@
     $feeSlabsForRenewal = \App\Models\SanghFeeSlab::orderBy('min_members')->get(['min_members', 'max_members', 'annual_fee']);
     $developmentFeeRateForRenewal = (float) \App\Models\Setting::getValue('sangh_development_fee_rate', 0);
 
+    $createdAt = $sangh->created_date ?? $sangh->created_at;
+    $createdAtStr = $createdAt ? \Carbon\Carbon::parse($createdAt)->format('d-m-Y') : '-';
+    $quarterStr = '-';
+
+    if ($createdAt) {
+        $month = (int) \Carbon\Carbon::parse($createdAt)->format('m');
+        if ($month >= 4 && $month <= 6) {
+            $quarterStr = 'Q1 (Apr - Jun)';
+        } elseif ($month >= 7 && $month <= 9) {
+            $quarterStr = 'Q2 (Jul - Sep)';
+        } elseif ($month >= 10 && $month <= 12) {
+            $quarterStr = 'Q3 (Oct - Dec)';
+        } else {
+            $quarterStr = 'Q4 (Jan - Mar)';
+        }
+    }
+
     $masterRows = [
         ['वर्ष', \App\Providers\AppServiceProvider::financialYear($sangh->registration_year)],
         ['संघाचे नाव', $sangh->name_of_sangh],
@@ -47,6 +64,8 @@
         ['सचिव मोबाईल', $sangh->secretary_phone],
         ['सचिव व्हॉट्सअप', $sangh->secretary_whatsapp],
         ['सचिव इमेल', $sangh->secretary_email],
+        ['फॉर्म तयार केल्याची तारीख (Created Date)', $createdAtStr],
+        ['फॉर्म तयार केल्याचे त्रैमासिक (Quarter)', $quarterStr],
     ];
 @endphp
 
@@ -181,7 +200,7 @@
                         <th>एकूण रक्कम</th>
                         <th>पावती रक्कम (भरलेली)</th>
                         <th>बाकी रक्कम</th>
-                        <th>Action</th>
+                        <th class="no-print">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -195,23 +214,68 @@
                     <tr>
                         <td><strong>@fy($newRegisterReceipt->receipt_year ?? $registrationYear)</strong></td>
                         <td>
-                            <select name="status" class="form-select form-select-sm" form="newRegisterReceiptForm">
-                                <option value="paid" @selected($newRegisterReceipt->is_paid)>Paid</option>
-                                <option value="unpaid" @selected(!$newRegisterReceipt->is_paid)>Unpaid</option>
-                            </select>
+                            <div class="d-print-none">
+                                <select name="status" class="form-select form-select-sm" form="newRegisterReceiptForm">
+                                    <option value="unpaid" @selected($newRegisterReceipt->status === 'unpaid')>Unpaid</option>
+                                    <option value="paid" @selected($newRegisterReceipt->status === 'paid')>Paid</option>
+                                    <option value="information_approved" @selected($newRegisterReceipt->status === 'information_approved')>Information approved</option>
+                                    <option value="sangh_registered" @selected($newRegisterReceipt->status === 'sangh_registered')>Sangh Registered</option>
+                                </select>
+                            </div>
+                            <span class="d-none d-print-block">
+                                {{ match($newRegisterReceipt->status) {
+                                    'paid' => 'Paid',
+                                    'information_approved' => 'Information approved',
+                                    'sangh_registered' => 'Sangh Registered',
+                                    default => 'Unpaid'
+                                } }}
+                            </span>
                         </td>
-                        <td><input type="text" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->feskcom_receipt_no }}" readonly disabled></td>
-                        <td><input type="date" name="feskcom_receipt_date" class="form-control form-control-sm" value="{{ optional($newRegisterReceipt->feskcom_receipt_date)->format('Y-m-d') }}" form="newRegisterReceiptForm"></td>
-                        <td><input type="number" class="form-control form-control-sm" value="{{ $registeredMale }}" readonly></td>
-                        <td><input type="number" class="form-control form-control-sm" value="{{ $registeredFemale }}" readonly></td>
-                        <td><input type="number" class="form-control form-control-sm" value="{{ $registeredTotal }}" readonly></td>
-                        <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->admission_fee }}" disabled></td>
-                        <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->annual_fee }}" disabled></td>
-                        <td><input type="number" class="form-control form-control-sm bg-light" value="{{ $newRegisterReceipt->development_fee }}" disabled></td>
-                        <td><input type="number" class="form-control form-control-sm bg-light fw-bold" value="{{ number_format($newRegisterTotal, 2) }}" disabled></td>
-                        <td><input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm" value="{{ $newRegisterReceipt->paid_amount }}" form="newRegisterReceiptForm"></td>
-                        <td><input type="number" class="form-control form-control-sm {{ $newRegisterBalance > 0 ? 'bg-danger-subtle text-danger fw-bold' : 'bg-success-subtle text-success fw-bold' }}" value="{{ number_format($newRegisterBalance, 2) }}" disabled></td>
-                        <td class="text-nowrap">
+                        <td>
+                            <input type="text" class="form-control form-control-sm bg-light d-print-none" value="{{ $newRegisterReceipt->feskcom_receipt_no }}" readonly disabled>
+                            <span class="d-none d-print-block">{{ $newRegisterReceipt->feskcom_receipt_no }}</span>
+                        </td>
+                        <td>
+                            <input type="date" name="feskcom_receipt_date" class="form-control form-control-sm d-print-none" value="{{ optional($newRegisterReceipt->feskcom_receipt_date)->format('Y-m-d') }}" form="newRegisterReceiptForm">
+                            <span class="d-none d-print-block">{{ optional($newRegisterReceipt->feskcom_receipt_date)->format('d-m-Y') }}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm d-print-none" value="{{ $registeredMale }}" readonly>
+                            <span class="d-none d-print-block">{{ $registeredMale }}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm d-print-none" value="{{ $registeredFemale }}" readonly>
+                            <span class="d-none d-print-block">{{ $registeredFemale }}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm d-print-none" value="{{ $registeredTotal }}" readonly>
+                            <span class="d-none d-print-block">{{ $registeredTotal }}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm bg-light d-print-none" value="{{ $newRegisterReceipt->admission_fee }}" disabled>
+                            <span class="d-none d-print-block">{{ $newRegisterReceipt->admission_fee }}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm bg-light d-print-none" value="{{ $newRegisterReceipt->annual_fee }}" disabled>
+                            <span class="d-none d-print-block">{{ $newRegisterReceipt->annual_fee }}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm bg-light d-print-none" value="{{ $newRegisterReceipt->development_fee }}" disabled>
+                            <span class="d-none d-print-block">{{ $newRegisterReceipt->development_fee }}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm bg-light fw-bold d-print-none" value="{{ number_format($newRegisterTotal, 2) }}" disabled>
+                            <span class="d-none d-print-block">{{ number_format($newRegisterTotal, 2) }}</span>
+                        </td>
+                        <td>
+                            <input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm d-print-none" value="{{ $newRegisterReceipt->paid_amount }}" form="newRegisterReceiptForm">
+                            <span class="d-none d-print-block">{{ $newRegisterReceipt->paid_amount }}</span>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm d-print-none {{ $newRegisterBalance > 0 ? 'bg-danger-subtle text-danger fw-bold' : 'bg-success-subtle text-success fw-bold' }}" value="{{ number_format($newRegisterBalance, 2) }}" disabled>
+                            <span class="d-none d-print-block">{{ number_format($newRegisterBalance, 2) }}</span>
+                        </td>
+                        <td class="text-nowrap no-print">
                             <button type="submit" class="btn btn-sm btn-success mb-1" form="newRegisterReceiptForm">
                                 <i class="fa fa-save"></i> Save
                             </button>
@@ -269,7 +333,7 @@
                         <th>एकूण रक्कम</th>
                         <th>पावती रक्कम (भरलेली)</th>
                         <th>बाकी रक्कम</th>
-                        <th>Action</th>
+                        <th class="no-print">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -279,23 +343,68 @@
                                 @csrf
                                 <td><strong>@fy($renewal->renewal_year)</strong></td>
                                 <td>
-                                    <select name="status" class="form-select form-select-sm">
-                                        <option value="paid" @selected($renewal->is_paid)>Paid</option>
-                                        <option value="unpaid" @selected(!$renewal->is_paid)>Unpaid</option>
-                                    </select>
+                                    <div class="d-print-none">
+                                        <select name="status" class="form-select form-select-sm">
+                                            <option value="unpaid" @selected($renewal->status === 'unpaid')>Unpaid</option>
+                                            <option value="paid" @selected($renewal->status === 'paid')>Paid</option>
+                                            <option value="information_approved" @selected($renewal->status === 'information_approved')>Information approved</option>
+                                            <option value="sangh_registered" @selected($renewal->status === 'sangh_registered')>Sangh Registered</option>
+                                        </select>
+                                    </div>
+                                    <span class="d-none d-print-block">
+                                        {{ match($renewal->status) {
+                                            'paid' => 'Paid',
+                                            'information_approved' => 'Information approved',
+                                            'sangh_registered' => 'Sangh Registered',
+                                            default => 'Unpaid'
+                                        } }}
+                                    </span>
                                 </td>
-                                <td><input type="text" class="form-control form-control-sm bg-light" value="{{ $renewal->feskcom_receipt_no ?: 'FSREN/auto' }}" readonly disabled></td>
-                                <td><input type="date" name="feskcom_receipt_date" class="form-control form-control-sm" value="{{ optional($renewal->feskcom_receipt_date)->format('Y-m-d') }}"></td>
-                                <td><input type="number" name="male_members" min="0" class="form-control form-control-sm renewal-male" value="{{ $renewal->male_members }}"></td>
-                                <td><input type="number" name="female_members" min="0" class="form-control form-control-sm renewal-female" value="{{ $renewal->female_members }}"></td>
-                                <td><input type="number" name="total_members" min="0" class="form-control form-control-sm bg-light renewal-total" value="{{ $renewal->total_members }}" readonly></td>
-                                <td><input type="number" class="form-control form-control-sm bg-light renewal-annual" value="{{ $renewal->annual_fee }}" disabled></td>
-                                <td><input type="number" class="form-control form-control-sm bg-light renewal-development" value="{{ $renewal->development_fee }}" disabled></td>
-                                <td><input type="number" name="penalty_fee" min="0" step="0.01" class="form-control form-control-sm" value="{{ $renewal->penalty_fee }}"></td>
-                                <td><input type="number" class="form-control form-control-sm bg-light fw-bold" value="{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0), 2) }}" disabled></td>
-                                <td><input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm" value="{{ $renewal->paid_amount }}"></td>
-                                <td><input type="number" class="form-control form-control-sm {{ (($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0) - ($renewal->paid_amount ?? 0)) > 0 ? 'bg-danger-subtle text-danger fw-bold' : 'bg-success-subtle text-success fw-bold' }}" value="{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0) - ($renewal->paid_amount ?? 0), 2) }}" disabled></td>
-                                <td class="text-nowrap">
+                                <td>
+                                    <input type="text" class="form-control form-control-sm bg-light d-print-none" value="{{ $renewal->feskcom_receipt_no ?: 'FSREN/auto' }}" readonly disabled>
+                                    <span class="d-none d-print-block">{{ $renewal->feskcom_receipt_no ?: 'FSREN/auto' }}</span>
+                                </td>
+                                <td>
+                                    <input type="date" name="feskcom_receipt_date" class="form-control form-control-sm d-print-none" value="{{ optional($renewal->feskcom_receipt_date)->format('Y-m-d') }}">
+                                    <span class="d-none d-print-block">{{ optional($renewal->feskcom_receipt_date)->format('d-m-Y') }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" name="male_members" min="0" class="form-control form-control-sm renewal-male d-print-none" value="{{ $renewal->male_members }}">
+                                    <span class="d-none d-print-block">{{ $renewal->male_members }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" name="female_members" min="0" class="form-control form-control-sm renewal-female d-print-none" value="{{ $renewal->female_members }}">
+                                    <span class="d-none d-print-block">{{ $renewal->female_members }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" name="total_members" min="0" class="form-control form-control-sm bg-light renewal-total d-print-none" value="{{ $renewal->total_members }}" readonly>
+                                    <span class="d-none d-print-block">{{ $renewal->total_members }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm bg-light renewal-annual d-print-none" value="{{ $renewal->annual_fee }}" disabled>
+                                    <span class="d-none d-print-block">{{ $renewal->annual_fee }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm bg-light renewal-development d-print-none" value="{{ $renewal->development_fee }}" disabled>
+                                    <span class="d-none d-print-block">{{ $renewal->development_fee }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" name="penalty_fee" min="0" step="0.01" class="form-control form-control-sm d-print-none" value="{{ $renewal->penalty_fee }}">
+                                    <span class="d-none d-print-block">{{ $renewal->penalty_fee }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm bg-light fw-bold d-print-none" value="{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0), 2) }}" disabled>
+                                    <span class="d-none d-print-block">{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0), 2) }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" name="paid_amount" min="0" step="0.01" class="form-control form-control-sm d-print-none" value="{{ $renewal->paid_amount }}">
+                                    <span class="d-none d-print-block">{{ $renewal->paid_amount }}</span>
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm d-print-none {{ (($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0) - ($renewal->paid_amount ?? 0)) > 0 ? 'bg-danger-subtle text-danger fw-bold' : 'bg-success-subtle text-success fw-bold' }}" value="{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0) - ($renewal->paid_amount ?? 0), 2) }}" disabled>
+                                    <span class="d-none d-print-block">{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0) - ($renewal->paid_amount ?? 0), 2) }}</span>
+                                </td>
+                                <td class="text-nowrap no-print">
                                     <button type="submit" class="btn btn-sm btn-success mb-1">
                                         <i class="fa fa-save"></i> Save
                                     </button>
@@ -632,27 +741,29 @@
 
             .sangh-show-page table {
                 width: 100% !important;
-                table-layout: auto !important;
-                font-size: 9px !important;
+                table-layout: fixed !important;
+                font-size: 8px !important;
+                word-wrap: break-word !important;
             }
 
             .sangh-show-page .renewal-table th,
             .sangh-show-page .renewal-table td {
-                padding: 2px 3px !important;
+                padding: 2px 1px !important;
                 white-space: normal !important;
+                word-break: break-word !important;
+                overflow-wrap: anywhere !important;
             }
 
-            /* Remove the fixed min-width that forces horizontal overflow on print */
-            .sangh-show-page .renewal-table input,
-            .sangh-show-page .renewal-table select {
+            /* Make spans look like input boxes on print so empty fields can be written on */
+            .sangh-show-page .renewal-table span.d-print-block {
                 min-width: 0 !important;
                 width: 100% !important;
-                font-size: 9px !important;
-                padding: 1px 2px !important;
-                border: none !important;
+                min-height: 12px;
+                font-size: 8px !important;
+                padding: 2px !important;
+                border: 1px solid #ccc !important;
                 background: transparent !important;
-                -webkit-appearance: none;
-                appearance: none;
+                display: block !important;
             }
 
             .sangh-show-page input[disabled],
