@@ -28,7 +28,7 @@
         <div class="mb-3">
             <label class="form-label">Replace file (optional)</label>
             <input type="file" name="file" class="form-control">
-            <small class="text-muted">Current: <a href="{{ $file->path }}" target="_blank">{{ $file->name }}</a></small>
+            <small class="text-muted">Current: <a href="{{ $file->path }}">{{ $file->name }}</a></small>
         </div>
 
         <button class="btn btn-primary">Save</button>

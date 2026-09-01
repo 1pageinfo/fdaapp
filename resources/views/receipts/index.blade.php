@@ -69,7 +69,7 @@
                         <td>{{ $receipt->group?->name ?? '-' }}</td>
                         <td>
                             @if($receipt->file_path)
-                                <a href="{{ asset('storage/app/public/' . $receipt->file_path) }}" target="_blank">View</a>
+                                <a href="{{ asset('storage/app/public/' . $receipt->file_path) }}">View</a>
                             @endif
                         </td>
                         <td>{{ $receipt->created_at->format('Y-m-d') }}</td>

@@ -292,7 +292,7 @@
         <div class="me-3 small">
           <strong>📌 Pinned:</strong>
           @if($pinned->file)
-            <a href="{{ asset('storage/app/public/' . $pinned->file->path) }}" target="_blank">{{ $pinned->file->name }}</a>
+            <a href="{{ asset('storage/app/public/' . $pinned->file->path) }}">{{ $pinned->file->name }}</a>
             @if($pinned->body) — {{ $pinned->body }} @endif
           @else
             {{ $pinned->body }}
@@ -329,7 +329,7 @@
               <div class="body">{!! nl2br(e($m->body)) !!}</div>
             @endif
             @if($m->file)
-              <div class="file-chip">📎 <a class="{{ $isMine ? 'text-dark' : '' }}" target="_blank"
+              <div class="file-chip">📎 <a class="{{ $isMine ? 'text-dark' : '' }}"
                   href="{{ asset('storage/app/public/' . $m->file->path) }}">{{ $m->file->name }}</a></div>
             @endif
             <hr>
@@ -665,7 +665,7 @@
               <div class="time text-muted">${m.created_at ?? ''}</div>
             </div>
             ${m.body ? `<div class="body">${safeBody}</div>` : ''}
-            ${m.file_url ? `<div class="file-chip">📎 <a target="_blank" href="${m.file_url}">${m.file_name ?? 'file'}</a></div>` : ''}
+            ${m.file_url ? `<div class="file-chip">📎 <a href="${m.file_url}">${m.file_name ?? 'file'}</a></div>` : ''}
           </div>
         </div>
       </li>`;

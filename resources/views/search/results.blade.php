@@ -64,7 +64,7 @@
 
             <li class="py-2 border-bottom d-flex justify-content-between align-items-center">
               <div>
-                <a href="{{ $fileUrl }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+                <a href="{{ $fileUrl }}" class="text-decoration-none">
                   {{ $fileName }}
                 </a>
                 <div class="small text-muted">{{ $fileUrl !== '#' ? $fileUrl : '' }}</div>

@@ -108,7 +108,7 @@
             <div class="list-group-item d-flex justify-content-between align-items-center">
 
               <!-- Left Section -->
-              <a href="{{ asset('storage/app/public/' . $file->disk_path) }}" target="_blank" rel="noopener"
+              <a href="{{ asset('storage/app/public/' . $file->disk_path) }}"
                 class="text-decoration-none text-reset d-flex align-items-center flex-grow-1">
 
                 <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center mr-3"
