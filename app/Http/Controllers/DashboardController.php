@@ -23,12 +23,16 @@ class DashboardController extends Controller
 
         // Query with date filters
         $data = [
-            'receipts'   => Receipt::whereBetween('created_at', [$startDate, $endDate])->count(),
-            'sanghs'     => Sangh::whereBetween('created_at', [$startDate, $endDate])->count(),
-            'meetings'   => Meeting::whereBetween('created_at', [$startDate, $endDate])->count(),
-            'folders'    => Folder::whereBetween('created_at', [$startDate, $endDate])->count(),
-            'groups'     => Group::whereBetween('created_at', [$startDate, $endDate])->count(),
-            'users'      => User::whereBetween('created_at', [$startDate, $endDate])->count(),
+            'sangh_registrations'    => \App\Models\SanghRegistrationReceipt::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->count(),
+            'sangh_renewals'         => \App\Models\SanghRenewal::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->count(),
+            'total_collections'      => \App\Models\SanghRegistrationReceipt::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->sum('paid_amount') 
+                                      + \App\Models\SanghRenewal::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->sum('paid_amount')
+                                      + \App\Models\Receipt::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->sum('amount'),
+            'sanghs'     => Sangh::whereDate('created_date', '>=', $startDate)->whereDate('created_date', '<=', $endDate)->count(),
+            'meetings'   => Meeting::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->count(),
+            'folders'    => Folder::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->count(),
+            'groups'     => Group::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->count(),
+            'users'      => User::whereDate('created_at', '>=', $startDate)->whereDate('created_at', '<=', $endDate)->count(),
         ];
 
         return view('dashboard.index', compact('data','startDate','endDate'));

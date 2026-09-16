@@ -110,7 +110,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/sanghs/{sangh}/pdf', [SanghController::class, 'downloadPdf'])->name('sanghs.pdf');         // generate & stream download
     Route::get('/sanghs/{sangh}/save-pdf', [SanghController::class, 'savePdfToStorage'])->name('sanghs.save_pdf'); // save to storage & return link
     Route::get('/sanghs/{sangh}/download-stored', [SanghController::class, 'downloadStoredPdf'])->name('sanghs.download_stored'); // download saved file
-
+    Route::post('/sanghs/{sangh}/approve', [SanghController::class, 'approveInformation'])->name('sanghs.approve');
 
 
 

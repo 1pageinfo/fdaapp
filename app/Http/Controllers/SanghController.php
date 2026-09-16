@@ -66,10 +66,8 @@ class SanghController extends Controller
         'स्थिती',
     ];
 
-    public function index(Request $request)
+    private function applyFilters($query, \Illuminate\Http\Request $request)
     {
-        $query = Sangh::query();
-
         if ($request->filled('pradeshik_vibhag')) {
             $query->where('pradeshik_vibhag', $request->input('pradeshik_vibhag'));
         }
@@ -132,6 +130,55 @@ class SanghController extends Controller
             });
         }
 
+        return $query;
+    }
+
+    public function index(Request $request)
+    {
+        $query = Sangh::query();
+        $this->applyFilters($query, $request);
+
+        // Calculate total members dynamically based on the filtered query BEFORE pagination
+        $totalMembers = (clone $query)->sum('total_members');
+
+        // Status counts for the index filter (unpaid, paid, information_approved, sangh_registered)
+        $paidCount = (clone $query)->where(function ($q) use ($request) {
+            if ($request->filled('register_receipt_year')) {
+                $q->whereHas('registrationReceipt', fn($r) => $r->where('receipt_year', (int)$request->input('register_receipt_year'))->where('status', 'paid'));
+            } elseif ($request->filled('renewal_receipt_year')) {
+                $q->whereHas('renewals', fn($r) => $r->where('renewal_year', (int)$request->input('renewal_receipt_year'))->where('status', 'paid'));
+            } else {
+                $q->whereHas('registrationReceipt', fn($r) => $r->where('status', 'paid'))
+                  ->orWhereHas('renewals', fn($r) => $r->where('status', 'paid'));
+            }
+        })->count();
+
+        // Calculate Unpaid as Total minus Paid to ensure the math perfectly aligns for the user
+        $totalCount = (clone $query)->count();
+        $unpaidCount = $totalCount - $paidCount;
+
+        $infoApprovedCount = (clone $query)->where(function ($q) use ($request) {
+            if ($request->filled('register_receipt_year')) {
+                $q->whereHas('registrationReceipt', fn($r) => $r->where('receipt_year', (int)$request->input('register_receipt_year'))->where('status', 'information_approved'));
+            } elseif ($request->filled('renewal_receipt_year')) {
+                $q->whereHas('renewals', fn($r) => $r->where('renewal_year', (int)$request->input('renewal_receipt_year'))->where('status', 'information_approved'));
+            } else {
+                $q->whereHas('registrationReceipt', fn($r) => $r->where('status', 'information_approved'))
+                  ->orWhereHas('renewals', fn($r) => $r->where('status', 'information_approved'));
+            }
+        })->count();
+
+        $registeredCount = (clone $query)->where(function ($q) use ($request) {
+            if ($request->filled('register_receipt_year')) {
+                $q->whereHas('registrationReceipt', fn($r) => $r->where('receipt_year', (int)$request->input('register_receipt_year'))->where('status', 'sangh_registered'));
+            } elseif ($request->filled('renewal_receipt_year')) {
+                $q->whereHas('renewals', fn($r) => $r->where('renewal_year', (int)$request->input('renewal_receipt_year'))->where('status', 'sangh_registered'));
+            } else {
+                $q->whereHas('registrationReceipt', fn($r) => $r->where('status', 'sangh_registered'))
+                  ->orWhereHas('renewals', fn($r) => $r->where('status', 'sangh_registered'));
+            }
+        })->count();
+
         $sanghs = $query->orderBy('sangh_sr_no', 'asc')->paginate(15)->withQueryString();
 
         // Get filter options from distinct data
@@ -139,11 +186,20 @@ class SanghController extends Controller
         $districts = Sangh::query()->whereNotNull('district')->distinct()->orderBy('district')->pluck('district');
         $years = range((int) date('Y'), 1970);
         
+        $vibhagDistricts = Sangh::query()
+            ->whereNotNull('pradeshik_vibhag')
+            ->whereNotNull('district')
+            ->select('pradeshik_vibhag', 'district')
+            ->distinct()
+            ->get()
+            ->groupBy('pradeshik_vibhag')
+            ->map->pluck('district');
+        
         // Get unique receipt years (excluding sangh data that has no receipt)
         $registerReceiptYears = SanghRegistrationReceipt::query()->distinct()->orderBy('receipt_year', 'desc')->pluck('receipt_year');
         $renewalReceiptYears = SanghRenewal::query()->distinct()->orderBy('renewal_year', 'desc')->pluck('renewal_year');
 
-        return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'years', 'registerReceiptYears', 'renewalReceiptYears'));
+        return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'vibhagDistricts', 'years', 'registerReceiptYears', 'renewalReceiptYears', 'totalMembers', 'unpaidCount', 'paidCount', 'infoApprovedCount', 'registeredCount'));
     }
 
     public function create()
@@ -189,21 +245,19 @@ class SanghController extends Controller
         $this->assertMinimumMembers($validated);
 
         DB::transaction(function () use ($validated) {
-            $numbering = $this->makeNumbering(
-                $validated['pradeshik_vibhag'] ?? null,
-                $validated['district'] ?? null,
-                $validated['pradeshik_vibhag_code'] ?? null,
-                $validated['district_code'] ?? null,
-                $validated['category_code'] ?? null,
-                $validated['sangh_type_code'] ?? null
-            );
-
             $sangh = Sangh::create(array_merge(
                 $this->normalizePayload($validated),
-                $numbering,
                 [
                     'created_by' => Auth::id(),
                     'created_date' => now(),
+                    'sangh_sr_no' => null,
+                    'unique_ref_no' => null,
+                    'pradeshik_sr_no' => null,
+                    'district_sr_no' => null,
+                    'pradeshik_ref_no' => null,
+                    'district_ref_no' => null,
+                    'pradeshik_vibhag_code' => $this->normalizeCode($validated['pradeshik_vibhag_code'] ?? $validated['pradeshik_vibhag']),
+                    'district_code' => $this->normalizeCode($validated['district_code'] ?? $validated['district']),
                 ]
             ));
 
@@ -306,8 +360,11 @@ class SanghController extends Controller
         $validated = $request->validate([
             'status' => 'required|in:unpaid,paid,information_approved,sangh_registered',
             'feskcom_receipt_date' => 'nullable|date',
-            'penalty_fee' => 'nullable|numeric|min:0',
-            'paid_amount' => 'nullable|numeric|min:0',
+            'penalty_fee' => 'nullable|integer|min:0',
+            'paid_amount' => 'nullable|integer|min:0',
+            'bank_name' => 'nullable|string|max:255',
+            'cheque_no' => 'nullable|string|max:50',
+            'cheque_date' => 'nullable|date',
         ]);
 
         $maleMembers = $this->intOrNull($sangh->male);
@@ -358,7 +415,26 @@ class SanghController extends Controller
             'development_fee' => $developmentFee,
             'penalty_fee' => $validated['penalty_fee'] ?? null,
             'paid_amount' => $validated['paid_amount'] ?? null,
+            'bank_name' => $validated['bank_name'] ?? null,
+            'cheque_no' => $validated['cheque_no'] ?? null,
+            'cheque_date' => $validated['cheque_date'] ?? null,
         ]);
+
+        if ($isPaid && in_array($status, ['information_approved', 'sangh_registered'])) {
+            if ($sangh->sangh_sr_no === null) {
+                $numbering = $this->makeNumbering(
+                    $sangh->pradeshik_vibhag,
+                    $sangh->district,
+                    $sangh->pradeshik_vibhag_code,
+                    $sangh->district_code,
+                    $sangh->category_code,
+                    $sangh->sangh_type_code,
+                    null, null, null,
+                    $sangh->created_date
+                );
+                $sangh->update($numbering);
+            }
+        }
 
         return redirect()->route('sanghs.show', $sangh)->with('success', 'New register Sangh receipt updated.');
     }
@@ -375,31 +451,57 @@ class SanghController extends Controller
         $keepVibhagSerial = $sangh->pradeshik_vibhag === $selectedVibhag;
         $keepDistrictSerial = $sangh->district === $selectedDistrict;
 
-        $numbering = $this->makeNumbering(
-            $selectedVibhag,
-            $selectedDistrict,
-            $validated['pradeshik_vibhag_code'] ?? null,
-            $validated['district_code'] ?? null,
-            $validated['category_code'] ?? null,
-            $validated['sangh_type_code'] ?? null,
-            $sangh->sangh_sr_no,
-            $keepVibhagSerial ? $sangh->pradeshik_sr_no : null,
-            $keepDistrictSerial ? $sangh->district_sr_no : null
-        );
+        $numbering = [];
+        if ($sangh->sangh_sr_no !== null) {
+            $numbering = $this->makeNumbering(
+                $selectedVibhag,
+                $selectedDistrict,
+                $validated['pradeshik_vibhag_code'] ?? null,
+                $validated['district_code'] ?? null,
+                $validated['category_code'] ?? null,
+                $validated['sangh_type_code'] ?? null,
+                $sangh->sangh_sr_no,
+                $keepVibhagSerial ? $sangh->pradeshik_sr_no : null,
+                $keepDistrictSerial ? $sangh->district_sr_no : null,
+                $sangh->created_date
+            );
+        } else {
+            $numbering = [
+                'pradeshik_vibhag_code' => $this->normalizeCode($validated['pradeshik_vibhag_code'] ?? $selectedVibhag),
+                'district_code' => $this->normalizeCode($validated['district_code'] ?? $selectedDistrict),
+            ];
+        }
 
-        $sangh->update(array_merge($this->normalizePayload($validated), [
-            'sangh_sr_no' => $numbering['sangh_sr_no'],
-            'unique_ref_no' => $numbering['unique_ref_no'],
-            'pradeshik_sr_no' => $numbering['pradeshik_sr_no'],
-            'pradeshik_ref_no' => $numbering['pradeshik_ref_no'],
-            'district_sr_no' => $numbering['district_sr_no'],
-            'district_ref_no' => $numbering['district_ref_no'],
-            'pradeshik_vibhag_code' => $numbering['pradeshik_vibhag_code'],
-            'district_code' => $numbering['district_code'],
-        ]));
+        $sangh->update(array_merge($this->normalizePayload($validated), $numbering));
         $this->ensureRenewalsForSangh($sangh);
 
         return redirect()->route('sanghs.index')->with('success', 'Sangh updated successfully.');
+    }
+
+
+    public function approveInformation(\Illuminate\Http\Request $request, Sangh $sangh)
+    {
+        if ($sangh->unique_ref_no) {
+            return back()->with('error', 'Sangh is already approved and has a Unique Ref No.');
+        }
+
+        // Generate the IDs
+        $numbering = $this->makeNumbering(
+            $sangh->pradeshik_vibhag,
+            $sangh->district,
+            $sangh->category_code,
+            $sangh->sangh_type_code,
+            $sangh->created_date
+        );
+
+        $sangh->update($numbering);
+
+        // Optionally update the registration receipt status
+        if ($sangh->registrationReceipt) {
+            $sangh->registrationReceipt->update(['status' => 'information_approved']);
+        }
+
+        return back()->with('success', 'Information Approved! Unique ID has been generated.');
     }
 
     public function destroy(Sangh $sangh)
@@ -408,9 +510,11 @@ class SanghController extends Controller
         return redirect()->route('sanghs.index')->with('success', 'Sangh deleted.');
     }
 
-    public function exportExcel()
+    public function exportExcel(\Illuminate\Http\Request $request)
     {
-        $sanghs = Sangh::query()->with('renewals')->orderBy('sangh_sr_no')->get();
+        $query = Sangh::query()->with('renewals');
+        $this->applyFilters($query, $request);
+        $sanghs = $query->orderBy('sangh_sr_no')->get();
 
         $masterRows = $sanghs->map(function (Sangh $s) {
             return [
@@ -769,8 +873,11 @@ class SanghController extends Controller
             'feskcom_receipt_date' => 'nullable|date',
             'male_members' => 'nullable|integer|min:0',
             'female_members' => 'nullable|integer|min:0',
-            'penalty_fee' => 'nullable|numeric|min:0',
-            'paid_amount' => 'nullable|numeric|min:0',
+            'penalty_fee' => 'nullable|integer|min:0',
+            'paid_amount' => 'nullable|integer|min:0',
+            'bank_name' => 'nullable|string|max:255',
+            'cheque_no' => 'nullable|string|max:50',
+            'cheque_date' => 'nullable|date',
         ]);
 
         $maleMembers = $validated['male_members'] ?? null;
@@ -816,6 +923,9 @@ class SanghController extends Controller
             'development_fee' => $developmentFee,
             'penalty_fee' => $validated['penalty_fee'] ?? null,
             'paid_amount' => $validated['paid_amount'] ?? null,
+            'bank_name' => $validated['bank_name'] ?? null,
+            'cheque_no' => $validated['cheque_no'] ?? null,
+            'cheque_date' => $validated['cheque_date'] ?? null,
         ]);
 
         return redirect()->route('sanghs.show', $sangh)->with('success', 'Renewal updated.');
@@ -936,37 +1046,45 @@ class SanghController extends Controller
         ];
     }
 
-    private function makeNumbering(
-        ?string $vibhag,
-        ?string $district,
-        ?string $vibhagCodeInput,
-        ?string $districtCodeInput,
-        ?string $categoryCode,
-        ?string $sanghTypeCode,
-        ?int $existingGlobalNo = null,
-        ?int $existingVibhagNo = null,
-        ?int $existingDistrictNo = null
-    ): array
+    private function makeNumbering($vibhag, $district, $categoryCode, $sanghTypeCode, $createdDate = null)
     {
-        $nextGlobal = $existingGlobalNo ?? (((int) Sangh::max('sangh_sr_no')) + 1);
+        $vibhagCode = $this->normalizeCode($vibhag);
+        $districtCode = $this->normalizeCode($district);
 
-        $vibhagCode = $this->normalizeCode($vibhagCodeInput ?: $vibhag);
-        $districtCode = $this->normalizeCode($districtCodeInput ?: $district);
+        // Fetch max existing sequence numbers
+        $existingGlobalNo = Sangh::query()->max('sangh_sr_no');
+        $nextGlobal = $existingGlobalNo ? ((int) $existingGlobalNo) + 1 : 1;
 
-        $nextVibhag = $existingVibhagNo ?? (((int) Sangh::query()
-            ->where('pradeshik_vibhag', $vibhag)
-            ->max('pradeshik_sr_no')) + 1);
+        $existingVibhagNo = Sangh::query()->where('pradeshik_vibhag', $vibhag)->max('pradeshik_sr_no');
+        $nextVibhag = $existingVibhagNo ? ((int) $existingVibhagNo) + 1 : 1;
 
-        $nextDistrict = $existingDistrictNo ?? (((int) Sangh::query()
-            ->where('district', $district)
-            ->max('district_sr_no')) + 1);
+        $existingDistrictNo = Sangh::query()->where('district', $district)->max('district_sr_no');
+        $nextDistrict = $existingDistrictNo ? ((int) $existingDistrictNo) + 1 : 1;
 
         $category = in_array($categoryCode, ['R', 'U', 'A'], true) ? $categoryCode : 'R';
         $sanghType = in_array($sanghTypeCode, ['G', 'F'], true) ? $sanghTypeCode : 'G';
 
+        $date = $createdDate ? \Carbon\Carbon::parse($createdDate) : now();
+        $month = $date->month;
+        $year = $date->year;
+
+        if ($month >= 4 && $month <= 6) {
+            $quarter = 'J';
+            $fy = substr($year, -2) . '-' . substr($year + 1, -2);
+        } elseif ($month >= 7 && $month <= 9) {
+            $quarter = 'S';
+            $fy = substr($year, -2) . '-' . substr($year + 1, -2);
+        } elseif ($month >= 10 && $month <= 12) {
+            $quarter = 'D';
+            $fy = substr($year, -2) . '-' . substr($year + 1, -2);
+        } else {
+            $quarter = 'M';
+            $fy = substr($year - 1, -2) . '-' . substr($year, -2);
+        }
+
         return [
             'sangh_sr_no' => $nextGlobal,
-            'unique_ref_no' => $category . '/' . $sanghType . '/' . $nextGlobal,
+            'unique_ref_no' => $category . '/' . $sanghType . '/' . $fy . '/' . $quarter . '/' . $nextGlobal,
             'pradeshik_sr_no' => $nextVibhag,
             'pradeshik_ref_no' => $vibhagCode . '/' . $nextVibhag,
             'district_sr_no' => $nextDistrict,

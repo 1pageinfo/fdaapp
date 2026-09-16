@@ -52,11 +52,39 @@
         <div class="card shadow-sm border-0 h-100">
           <div class="card-body d-flex align-items-center justify-content-between">
             <div>
-              <div class="text-muted small mb-1">Total Receipts</div>
-              <div class="h3 mb-0">{{ $data['receipts'] }}</div>
+              <div class="text-muted small mb-1">Sangh Register Receipts</div>
+              <div class="h3 mb-0">{{ $data['sangh_registrations'] }}</div>
+            </div>
+            <div class="icon icon-box-info">
+              <span class="icon-paper-clip"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-sm-6 col-lg-4 mb-3">
+        <div class="card shadow-sm border-0 h-100">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="text-muted small mb-1">Sangh Renewal Receipts</div>
+              <div class="h3 mb-0">{{ $data['sangh_renewals'] }}</div>
+            </div>
+            <div class="icon icon-box-warning">
+              <span class="icon-refresh"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-sm-6 col-lg-4 mb-3">
+        <div class="card shadow-sm border-0 h-100 bg-light">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="text-muted small mb-1">Total Fee Collections</div>
+              <div class="h3 mb-0 text-success">₹{{ number_format($data['total_collections'] ?? 0) }}</div>
             </div>
             <div class="icon icon-box-success">
-              <span class="icon-paper"></span>
+              <span class="ti-money"></span>
             </div>
           </div>
         </div>

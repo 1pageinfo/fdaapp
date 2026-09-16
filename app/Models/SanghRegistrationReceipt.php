@@ -35,6 +35,10 @@ class SanghRegistrationReceipt extends Model
         'development_fee',
         'penalty_fee',
         'paid_amount',
+        'status',
+        'bank_name',
+        'cheque_no',
+        'cheque_date',
     ];
 
     protected $casts = [

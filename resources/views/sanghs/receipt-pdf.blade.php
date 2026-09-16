@@ -44,6 +44,13 @@
             margin: 5px 0;
         }
 
+        
+        .payment-details {
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px dashed #666;
+            background-color: #f9f9f9;
+        }
         .receipt-title {
             font-size: 18px;
             font-weight: bold;
@@ -222,26 +229,36 @@
             <tbody>
                 <tr>
                     <td>वार्षिक शुल्क (Annual Fee)</td>
-                    <td class="currency">₹ {{ number_format($renewal->annual_fee ?? 0, 2) }}</td>
+                    <td class="currency">₹ {{ number_format($renewal->annual_fee ?? 0, 0) }}</td>
                 </tr>
                 <tr>
                     <td>विकास निधी शुल्क (Development Fund Fee)</td>
-                    <td class="currency">₹ {{ number_format($renewal->development_fee ?? 0, 2) }}</td>
+                    <td class="currency">₹ {{ number_format($renewal->development_fee ?? 0, 0) }}</td>
                 </tr>
                 <tr>
                     <td>दंड शुल्क (Penalty Fee)</td>
-                    <td class="currency">₹ {{ number_format($renewal->penalty_fee ?? 0, 2) }}</td>
+                    <td class="currency">₹ {{ number_format($renewal->penalty_fee ?? 0, 0) }}</td>
                 </tr>
                 <tr class="total-row">
                     <td>एकूण रक्कम (Total Amount)</td>
-                    <td class="currency">₹ {{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0), 2) }}</td>
+                    <td class="currency">₹ {{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0), 0) }}</td>
                 </tr>
                 <tr class="paid-row">
                     <td>भरलेली रक्कम (Paid Amount)</td>
-                    <td class="currency">₹ {{ number_format($renewal->paid_amount ?? 0, 2) }}</td>
+                    <td class="currency">₹ {{ number_format($renewal->paid_amount ?? 0, 0) }}</td>
                 </tr>
             </tbody>
-        </table>
+                  </table>
+
+          @if($renewal->bank_name || $renewal->cheque_no)
+          <div class="payment-details">
+              <p>
+                  @if($renewal->bank_name) <strong>बँकेचे नाव (Bank):</strong> {{ $renewal->bank_name }} @endif
+                  @if($renewal->cheque_no) | <strong>चेक/चलन (Cheque/Txn No):</strong> {{ $renewal->cheque_no }} @endif
+                  @if($renewal->cheque_date) | <strong>दिनांक (Date):</strong> {{ \Carbon\Carbon::parse($renewal->cheque_date)->format('d-m-Y') }} @endif
+              </p>
+          </div>
+          @endif
 
         <div class="divider"></div>
 

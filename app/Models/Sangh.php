@@ -70,6 +70,7 @@ class Sangh extends Model
         'secretary_whatsapp',
         'secretary_email',
         'created_by',
+        'assigned_to',
         'created_date',
     ];
 

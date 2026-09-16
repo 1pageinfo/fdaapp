@@ -4,12 +4,12 @@
     <meta charset="utf-8">
     <title>Sangh #{{ $sangh->sangh_sr_no }}</title>
     <style>
-        body { font-family: DejaVu Sans, sans-serif; font-size:12px; color:#222; }
-        .header { text-align:center; margin-bottom:20px; }
-        .section { margin-bottom:12px; }
+        body { font-family: DejaVu Sans, sans-serif; font-size:10px; color:#222; margin: 0; padding: 0; }
+        .header { text-align:center; margin-bottom:10px; }
+        .section { margin-bottom:10px; }
         table { width:100%; border-collapse: collapse; }
-        th, td { padding:8px 6px; border:1px solid #ddd; text-align:left; vertical-align:top; }
-        h2 { margin:0 0 8px 0; font-size:16px; }
+        th, td { padding:2px 4px; border:1px solid #ddd; text-align:left; vertical-align:top; }
+        h2 { margin:0 0 4px 0; font-size:14px; }
     </style>
 </head>
 <body>

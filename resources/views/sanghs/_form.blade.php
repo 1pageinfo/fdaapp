@@ -1,4 +1,4 @@
-@if(auth()->check() && (auth()->user()->role === 'admin' || auth()->user()->role === 'superadmin'))
+@if(auth()->check() && (auth()->user()->hasRole('admin') || auth()->user()->hasRole('super-admin') || auth()->user()->hasRole('superadmin') || auth()->user()->hasRole('system-admin') || auth()->user()->id === 1))
 <div class="card mb-4 border-info shadow-sm">
     <div class="card-header bg-info text-white">
         <i class="fa fa-user-circle"></i> Admin: Assign Form Ownership
@@ -27,32 +27,32 @@
     </div>
     <div class="form-group col-md-5">
         <label>संघाचे नाव</label>
-        <input type="text" name="name_of_sangh" class="form-control" value="{{ old('name_of_sangh', $sangh->name_of_sangh ?? '') }}" required>
+        <input type="text" name="name_of_sangh" class="form-control marathi-only" value="{{ old('name_of_sangh', $sangh->name_of_sangh ?? '') }}" required>
     </div>
     <div class="form-group col-md-2">
-        <label>श्रेणी (R/U/A)</label>
+        <label>श्रेणी <span class="text-danger">*</span></label>
         @php($categoryCode = strtoupper((string) old('category_code', $sangh->category_code ?? '')))
         <select name="category_code" class="form-control" required>
             <option value="">Select श्रेणी</option>
-            <option value="R" {{ $categoryCode === 'R' ? 'selected' : '' }}>R</option>
-            <option value="U" {{ $categoryCode === 'U' ? 'selected' : '' }}>U</option>
-            <option value="A" {{ $categoryCode === 'A' ? 'selected' : '' }}>A</option>
+            <option value="R" {{ $categoryCode === 'R' ? 'selected' : '' }}>ग्रामीण</option>
+            <option value="U" {{ $categoryCode === 'U' ? 'selected' : '' }}>शहरी</option>
+            <option value="A" {{ $categoryCode === 'A' ? 'selected' : '' }}>निमशहरी</option>
         </select>
     </div>
     <div class="form-group col-md-2">
-        <label>संघ प्रकार (G/F)</label>
+        <label>संघ प्रकार</label>
         @php($sanghTypeCode = strtoupper((string) old('sangh_type_code', $sangh->sangh_type_code ?? '')))
         <select name="sangh_type_code" class="form-control" required>
             <option value="">Select प्रकार</option>
-            <option value="G" {{ $sanghTypeCode === 'G' ? 'selected' : '' }}>G</option>
-            <option value="F" {{ $sanghTypeCode === 'F' ? 'selected' : '' }}>F</option>
+            <option value="G" {{ $sanghTypeCode === 'G' ? 'selected' : '' }}>सर्वसाधारण</option>
+            <option value="F" {{ $sanghTypeCode === 'F' ? 'selected' : '' }}>महिला</option>
         </select>
     </div>
 </div>
 
 <div class="form-row">
     <div class="form-group col-md-4">
-        <label>प्रादेशिक विभाग</label>
+        <label>प्रादेशिक विभाग <span class="text-danger">*</span></label>
         @php($pradeshikVibhag = old('pradeshik_vibhag', $sangh->pradeshik_vibhag ?? ''))
         <select name="pradeshik_vibhag" id="pradeshik_vibhag" class="form-control" required>
             <option value="">Select प्रादेशिक विभाग</option>
@@ -77,7 +77,7 @@
         <input type="text" id="pradeshik_vibhag_code" name="pradeshik_vibhag_code" class="form-control" value="{{ old('pradeshik_vibhag_code', $sangh->pradeshik_vibhag_code ?? '') }}" readonly>
     </div>
     <div class="form-group col-md-4">
-        <label>जिल्हा</label>
+        <label>जिल्हा <span class="text-danger">*</span></label>
         @php($district = old('district', $sangh->district ?? ''))
         <select name="district" id="district" class="form-control" required>
             <option value="">Select जिल्हा</option>
@@ -152,32 +152,32 @@
 {{-- Village Address --}}
 <div id="section_village_addr" class="form-row" @if(old('address_type', (!empty(optional($sangh)->address) || (!empty(optional($sangh)->city) && empty(optional($sangh)->village))) ? 'city' : 'village') === 'city') style="display:none" @endif>
     <div class="form-group col-md-4">
-        <label>तालुका</label>
-        <select name="taluka" id="taluka" class="form-control"><option value="">Select तालुका</option></select>
+        <label>तालुका <span class="text-danger">*</span></label>
+        <select name="taluka" id="taluka" class="form-control" required><option value="">Select तालुका</option></select>
     </div>
     <div class="form-group col-md-4">
-        <label>गाव</label>
-        <input type="text" name="village" class="form-control" value="{{ old('village', $sangh->village ?? '') }}">
+        <label>गाव <span class="text-danger">*</span></label>
+        <input type="text" name="village" class="form-control marathi-only" value="{{ old('village', $sangh->village ?? '') }}" required>
     </div>
     <div class="form-group col-md-4">
         <label>मुक्काम पोस्ट</label>
-        <input type="text" name="mukkam_post" class="form-control" value="{{ old('mukkam_post', $sangh->mukkam_post ?? '') }}">
+        <input type="text" name="mukkam_post" class="form-control marathi-only" value="{{ old('mukkam_post', $sangh->mukkam_post ?? '') }}">
     </div>
 </div>
 
 {{-- City Address --}}
 <div id="section_city_addr" class="form-row" @if(old('address_type', (!empty(optional($sangh)->address) || (!empty(optional($sangh)->city) && empty(optional($sangh)->village))) ? 'city' : 'village') === 'village') style="display:none" @endif>
     <div class="form-group col-md-4">
-        <label>पत्ता / Address</label>
-        <input type="text" name="address" class="form-control" value="{{ old('address', $sangh->address ?? '') }}">
+        <label>पत्ता / Address <span class="text-danger">*</span></label>
+        <input type="text" name="address" class="form-control marathi-only" value="{{ old('address', $sangh- required>address ?? '') }}">
     </div>
     <div class="form-group col-md-3">
         <label>रस्ता / पथ / Road</label>
-        <input type="text" name="road_path" class="form-control" value="{{ old('road_path', $sangh->road_path ?? '') }}">
+        <input type="text" name="road_path" class="form-control marathi-only" value="{{ old('road_path', $sangh->road_path ?? '') }}">
     </div>
     <div class="form-group col-md-2">
         <label>विभाग / प्रभाग / Area</label>
-        <input type="text" name="ward_section" class="form-control" value="{{ old('ward_section', $sangh->ward_section ?? '') }}">
+        <input type="text" name="ward_section" class="form-control marathi-only" value="{{ old('ward_section', $sangh->ward_section ?? '') }}">
     </div>
     <div class="form-group col-md-3">
         <label>शहर / City</label>
@@ -289,15 +289,15 @@
         <div class="form-row mb-0">
             <div class="form-group col-md-4">
                 <label>प्रवेश शुल्क</label>
-                <input type="number" min="0" step="0.01" name="pradeshik_admission_fee" class="form-control" value="{{ old('pradeshik_admission_fee', $sangh->pradeshik_admission_fee ?? '') }}">
+                <input type="number" min="0" step="1" name="pradeshik_admission_fee" class="form-control" value="{{ old('pradeshik_admission_fee', $sangh->pradeshik_admission_fee ?? '') }}">
             </div>
             <div class="form-group col-md-4">
                 <label>वार्षिक शुल्क</label>
-                <input type="number" min="0" step="0.01" name="pradeshik_annual_fee" class="form-control" value="{{ old('pradeshik_annual_fee', $sangh->pradeshik_annual_fee ?? '') }}">
+                <input type="number" min="0" step="1" name="pradeshik_annual_fee" class="form-control" value="{{ old('pradeshik_annual_fee', $sangh->pradeshik_annual_fee ?? '') }}">
             </div>
             <div class="form-group col-md-4">
                 <label>विकास निधी शुल्क</label>
-                <input type="number" min="0" step="0.01" name="pradeshik_development_fee" class="form-control" value="{{ old('pradeshik_development_fee', $sangh->pradeshik_development_fee ?? '') }}">
+                <input type="number" min="0" step="1" name="pradeshik_development_fee" class="form-control" value="{{ old('pradeshik_development_fee', $sangh->pradeshik_development_fee ?? '') }}">
             </div>
         </div>
     </div>
@@ -329,8 +329,8 @@
 
 <div class="form-row">
     <div class="form-group col-md-3">
-        <label>अध्यक्ष</label>
-        <input type="text" name="president" class="form-control" value="{{ old('president', $sangh->president ?? '') }}">
+        <label>अध्यक्ष <span class="text-danger">*</span></label>
+        <input type="text" name="president" class="form-control marathi-only" value="{{ old('president', $sangh->president ?? '') }}" required>
     </div>
     <div class="form-group col-md-3">
         <label>मो.फ़ोन नंबर</label>
@@ -348,8 +348,8 @@
 
 <div class="form-row">
     <div class="form-group col-md-3">
-        <label>सचिव</label>
-        <input type="text" name="secretary" class="form-control" value="{{ old('secretary', $sangh->secretary ?? '') }}">
+        <label>सचिव <span class="text-danger">*</span></label>
+        <input type="text" name="secretary" class="form-control marathi-only" value="{{ old('secretary', $sangh->secretary ?? '') }}" required>
     </div>
     <div class="form-group col-md-3">
         <label>मो.फ़ोन नंबर</label>
@@ -448,8 +448,50 @@
         const feeDevelopmentField = document.getElementById('fee_development');
         const feePayableField     = document.getElementById('fee_payable');
 
+        // Marathi only validation
+        document.querySelectorAll('.marathi-only').forEach(function(field) {
+            field.addEventListener('input', function(e) {
+                // Allow Marathi unicode range, spaces, common punctuation, numbers
+                const regex = /[^\u0900-\u097F\s\.,\-\/()0-9]/g;
+                if (regex.test(this.value)) {
+                    this.value = this.value.replace(regex, '');
+                    
+                    // Show brief tooltip/warning
+                    let tooltip = this.nextElementSibling;
+                    if (!tooltip || !tooltip.classList.contains('marathi-warning')) {
+                        tooltip = document.createElement('small');
+                        tooltip.className = 'text-danger marathi-warning position-absolute';
+                        tooltip.style.fontSize = '0.75rem';
+                        tooltip.style.marginTop = '-5px';
+                        tooltip.innerText = 'कृपया फक्त मराठीत टाइप करा (Marathi only)';
+                        this.parentNode.appendChild(tooltip);
+                        setTimeout(() => tooltip.remove(), 2000);
+                    }
+                }
+            });
+        });
+
+        // If F is selected, male members must be 0 and readonly
+        const sanghTypeSelect = document.querySelector('[name="sangh_type_code"]');
+        const maleInput = document.querySelector('[name="male"]');
+        if (sanghTypeSelect && maleInput) {
+            function toggleMaleInput() {
+                if (sanghTypeSelect.value === 'F') {
+                    maleInput.value = '0';
+                    maleInput.readOnly = true;
+                    maleInput.style.backgroundColor = '#e9ecef';
+                    maleInput.dispatchEvent(new Event('input', { bubbles: true }));
+                } else {
+                    maleInput.readOnly = false;
+                    maleInput.style.backgroundColor = '';
+                }
+            }
+            sanghTypeSelect.addEventListener('change', toggleMaleInput);
+            toggleMaleInput();
+        }
+
         function formatFee(amount) {
-            return '₹ ' + Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return '₹ ' + Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         }
 
         function annualFeeForMembers(total) {

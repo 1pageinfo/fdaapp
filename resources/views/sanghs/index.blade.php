@@ -17,7 +17,7 @@
                     <a href="{{ route('sanghs.create') }}" class="btn btn-sm btn-primary">
                         <i class="fa fa-plus"></i> Create New
                     </a>
-                    <a href="{{ route('sanghs.export') }}" class="btn btn-sm btn-outline-secondary">
+                    <a href="{{ route('sanghs.export', request()->query()) }}" class="btn btn-sm btn-outline-secondary">
                         <i class="fa fa-download"></i> Export
                     </a>
                     <a href="{{ route('sanghs.template') }}" class="btn btn-sm btn-outline-info">
@@ -153,16 +153,36 @@
         </div>
     </div>
 
-    <!-- Seed Placeholders Button -->
-    <div class="mb-3 d-flex align-items-center">
-        <form action="{{ route('sanghs.seed_placeholders') }}" method="POST" onsubmit="return confirm('Add placeholder rows up to 6676?');" style="display: inline;" class="me-3">
-            @csrf
-            <button class="btn btn-warning btn-sm shadow-sm">
-                <i class="fa fa-plus-square me-1"></i> Pre-add Blank Sangh rows till 6676
-            </button>
-        </form>
-        <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
-            <span class="text-secondary fw-semibold">Total Records: <strong class="text-dark">{{ $sanghs->total() }}</strong></span>
+    <!-- Stats Row -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <form action="{{ route('sanghs.seed_placeholders') }}" method="POST" onsubmit="return confirm('Add placeholder rows up to 6676?');" style="display: inline;" class="me-2">
+                    @csrf
+                    <button class="btn btn-warning btn-sm shadow-sm">
+                        <i class="fa fa-plus-square me-1"></i> Pre-add Blank Sangh rows
+                    </button>
+                </form>
+                
+                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
+                    <span class="text-secondary fw-semibold">Total Records: <strong class="text-dark">{{ $sanghs->total() }}</strong></span>
+                </div>
+                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center bg-light">
+                    <span class="text-secondary fw-semibold">Total Members: <strong class="text-dark" style="font-size: 1.1em;">{{ number_format($totalMembers) }}</strong></span>
+                </div>
+                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
+                    <span class="text-secondary fw-semibold">Unpaid: <strong class="text-danger">{{ number_format($unpaidCount) }}</strong></span>
+                </div>
+                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
+                    <span class="text-secondary fw-semibold">Paid: <strong class="text-success">{{ number_format($paidCount) }}</strong></span>
+                </div>
+                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
+                    <span class="text-secondary fw-semibold">Approved: <strong class="text-info">{{ number_format($infoApprovedCount) }}</strong></span>
+                </div>
+                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
+                    <span class="text-secondary fw-semibold">Registered: <strong class="text-primary">{{ number_format($registeredCount) }}</strong></span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -437,5 +457,45 @@
             </div>
         </div>
     </div>
+    </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const vibhagDistrictMap = {!! $vibhagDistricts->toJson() !!};
+
+        const vibhagSelect = document.querySelector('select[name="pradeshik_vibhag"]');
+        const districtSelect = document.querySelector('select[name="district"]');
+        
+        if (!vibhagSelect || !districtSelect) return;
+
+        const allDistrictOptions = Array.from(districtSelect.options).filter(o => o.value !== '');
+
+        function updateDistricts() {
+            const selectedVibhag = (vibhagSelect.value || '').trim();
+            const allowedDistricts = vibhagDistrictMap[selectedVibhag] || null;
+
+            // Clear current options except the placeholder
+            districtSelect.innerHTML = '<option value="">All Districts</option>';
+
+            const toShow = allowedDistricts 
+                ? allDistrictOptions.filter(o => allowedDistricts.includes(o.value.trim())) 
+                : allDistrictOptions;
+
+            toShow.forEach(o => districtSelect.appendChild(o.cloneNode(true)));
+
+            const currentValue = oldDistrict;
+            if (currentValue && toShow.some(o => o.value.trim() === currentValue.trim())) {
+                districtSelect.value = currentValue;
+            } else {
+                districtSelect.value = '';
+            }
+        }
+
+        const oldDistrict = "{!! request('district') !!}";
+        vibhagSelect.addEventListener('change', updateDistricts);
+        updateDistricts();
+        
+    });
+</script>
 @endsection
