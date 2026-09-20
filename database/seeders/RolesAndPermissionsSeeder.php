@@ -11,9 +11,21 @@ class RolesAndPermissionsSeeder extends Seeder
     public function run(): void
     {
         // Roles
-        $roles = ['superadmin', 'member'];
-        foreach ($roles as $role) {
+        $validRoles = ['superadmin', 'member'];
+        foreach ($validRoles as $role) {
             Role::firstOrCreate(['slug' => $role]);
+        }
+
+        // Remove any role outside the valid set (e.g. legacy admin/moderator).
+        // role_user/permission_role pivot rows cascade-delete automatically.
+        $obsoleteRoles = Role::whereNotIn('slug', $validRoles)->get();
+        foreach ($obsoleteRoles as $role) {
+            $affectedUsers = $role->users()->get(['name', 'email']);
+            if ($affectedUsers->isNotEmpty() && isset($this->command)) {
+                $list = $affectedUsers->map(fn ($u) => "{$u->name} <{$u->email}>")->implode(', ');
+                $this->command->warn("Removing role '{$role->slug}' — held by: {$list}");
+            }
+            $role->delete();
         }
 
         // Feature/action permissions, driven by config/app_permissions.php

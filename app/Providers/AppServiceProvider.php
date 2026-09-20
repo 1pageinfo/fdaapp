@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -21,6 +22,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // App views use Bootstrap 4 markup throughout; Laravel's default pagination
+        // view is Tailwind-based and renders unstyled (oversized) SVG arrow icons
+        // when Tailwind isn't loaded.
+        Paginator::useBootstrapFour();
+
         // Displays a year as a financial-year range, e.g. 2025 -> "2025-2024".
         Blade::directive('fy', function ($expression) {
             return "<?php echo \\App\\Providers\\AppServiceProvider::financialYear($expression); ?>";
