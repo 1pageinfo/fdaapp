@@ -27,7 +27,8 @@ class FolderController extends Controller
 
     public function index(Request $request)
     {
-        $query = \App\Models\Folder::with(['subfolders', 'group'])
+        $query = \App\Models\Folder::with('group')
+            ->withCount(['subfolders', 'files'])
             ->whereNull('parent_id') // only main folders
             ->orderBy('sort_order')
             ->orderBy('year', 'desc')
