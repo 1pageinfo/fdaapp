@@ -20,7 +20,7 @@ class Folder extends Model
     }
 
 
-    protected $fillable = ['name', 'parent_id', 'owner_group_id', 'year', 'sort_order'];
+    protected $fillable = ['name', 'parent_id', 'owner_group_id', 'year', 'sort_order', 'created_by', 'assigned_to'];
 
     public function parent()
     {
@@ -40,5 +40,39 @@ class Folder extends Model
     public function group()
     {
         return $this->belongsTo(Group::class, 'owner_group_id');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function assignee()
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        if ($user->hasRole('superadmin')) {
+            return true;
+        }
+
+        if ($this->created_by === $user->id || $this->assigned_to === $user->id) {
+            return true;
+        }
+
+        if ($this->owner_group_id) {
+            return $this->group()->whereHas('users', fn ($q) => $q->where('users.id', $user->id))->exists();
+        }
+
+        return false;
+    }
+
+    public function isManageableBy(User $user): bool
+    {
+        return $user->hasRole('superadmin')
+            || $this->created_by === $user->id
+            || $this->assigned_to === $user->id;
     }
 }

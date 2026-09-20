@@ -12,16 +12,46 @@ use ZipArchive;
 
 class FileController extends Controller
 {
-    public function index()
+    protected function visibleFolderIds(Request $request)
     {
-        // eager-load folder and uploader
-        $files = File::with('folder', 'uploader')->paginate(10);
+        if ($request->user()->hasRole('superadmin')) {
+            return Folder::pluck('id');
+        }
+
+        $userId = $request->user()->id;
+        $groupIds = \App\Models\Group::where('created_by', $userId)
+            ->orWhere('assigned_to', $userId)
+            ->orWhereHas('users', fn ($q) => $q->where('users.id', $userId))
+            ->pluck('id');
+
+        return Folder::where('created_by', $userId)
+            ->orWhere('assigned_to', $userId)
+            ->orWhereIn('owner_group_id', $groupIds)
+            ->pluck('id');
+    }
+
+    public function index(Request $request)
+    {
+        $query = File::with('folder', 'uploader');
+
+        if (! $request->user()->hasRole('superadmin')) {
+            $userId = $request->user()->id;
+            $folderIds = $this->visibleFolderIds($request);
+            $query->where(function ($q) use ($userId, $folderIds) {
+                $q->where('uploaded_by', $userId)
+                    ->orWhereIn('folder_id', $folderIds);
+            });
+        }
+
+        $files = $query->paginate(10);
         return view('files.index', compact('files'));
     }
 
     public function create(Request $request)
     {
-        $folders = Folder::all();
+        $folders = $request->user()->hasRole('superadmin')
+            ? Folder::all()
+            : Folder::whereIn('id', $this->visibleFolderIds($request))->get();
         // optionally accept ?folder_id=...
         return view('files.create', [
             'folders' => $folders,
@@ -147,15 +177,21 @@ class FileController extends Controller
 
 
     // Show edit form
-    public function edit(File $file)
+    public function edit(Request $request, File $file)
     {
-        $folders = Folder::all();
+        abort_unless($file->isVisibleTo($request->user()), 403);
+
+        $folders = $request->user()->hasRole('superadmin')
+            ? Folder::all()
+            : Folder::whereIn('id', $this->visibleFolderIds($request))->get();
         return view('files.edit', compact('file', 'folders'));
     }
 
     // Update metadata or replace file if needed
     public function update(Request $request, File $file)
     {
+        abort_unless($file->isVisibleTo($request->user()), 403);
+
         $request->validate([
             'name' => 'nullable|string|max:255',
             'folder_id' => 'nullable|exists:folders,id',
@@ -193,8 +229,10 @@ class FileController extends Controller
             ->with('success', 'File updated successfully.');
     }
 
-    public function destroy(File $file)
+    public function destroy(Request $request, File $file)
     {
+        abort_unless($file->isVisibleTo($request->user()), 403);
+
         // delete physical file first
         if ($file->disk_path && Storage::disk('public')->exists($file->disk_path)) {
             Storage::disk('public')->delete($file->disk_path);

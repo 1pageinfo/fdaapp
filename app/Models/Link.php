@@ -22,6 +22,7 @@ class Link extends Model
 
     protected $fillable = [
         'user_id',
+        'assigned_to',
         'title',
         'platform',
         'category',
@@ -35,6 +36,28 @@ class Link extends Model
         'is_active' => 'boolean',
         'sort_order' => 'integer',
     ];
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function assignee()
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        return $user->hasRole('superadmin')
+            || $this->user_id === $user->id
+            || $this->assigned_to === $user->id;
+    }
+
+    public function isManageableBy(User $user): bool
+    {
+        return $this->isVisibleTo($user);
+    }
 
     // optional helper scopes
     public function scopeSocial($query)

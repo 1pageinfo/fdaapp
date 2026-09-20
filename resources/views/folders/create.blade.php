@@ -31,6 +31,18 @@
             </select>
         </div>
 
+        @if(auth()->check() && auth()->user()->hasRole('superadmin'))
+            <div class="mb-3">
+                <label>Assign To</label>
+                <select name="assigned_to" class="form-control">
+                    <option value="">-- No specific user (Unassigned) --</option>
+                    @foreach($allUsers as $u)
+                        <option value="{{ $u->id }}">{{ $u->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+        @endif
+
         <button class="btn btn-success">Save</button>
     </form>
 </div>

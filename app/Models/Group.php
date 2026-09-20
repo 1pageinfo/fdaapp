@@ -20,7 +20,7 @@ class Group extends Model
     }
 
 
-    protected $fillable = ['name','description', 'sort_order'];
+    protected $fillable = ['name','description', 'sort_order', 'created_by', 'assigned_to'];
 
     // Default tabs for a new group (you can seed/create these)
     public const DEFAULT_TABS = [
@@ -35,6 +35,34 @@ class Group extends Model
     public function users()
     {
         return $this->belongsToMany(User::class)->withPivot('is_admin')->withTimestamps();
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function assignee()
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        if ($user->hasRole('superadmin')) {
+            return true;
+        }
+
+        return $this->created_by === $user->id
+            || $this->assigned_to === $user->id
+            || $this->users()->where('users.id', $user->id)->exists();
+    }
+
+    public function isManageableBy(User $user): bool
+    {
+        return $user->hasRole('superadmin')
+            || $this->created_by === $user->id
+            || $this->assigned_to === $user->id;
     }
 
     public function chats()

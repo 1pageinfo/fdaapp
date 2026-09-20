@@ -11,44 +11,33 @@ class RolesAndPermissionsSeeder extends Seeder
     public function run(): void
     {
         // Roles
-        $roles = ['superadmin', 'admin', 'moderator', 'member'];
+        $roles = ['superadmin', 'member'];
         foreach ($roles as $role) {
             Role::firstOrCreate(['slug' => $role]);
         }
 
-        // Feature/action permissions used by the settings screen.
-        $features = [
-            'dashboard', 'receipts', 'sanghs', 'meetings', 'folders', 'files',
-            'groups', 'chats', 'users', 'settings', 'reports', 'export',
-            'profile', 'search', 'notifications', 'tabs', 'pin', 'audit',
-            'sangh_fee', 'coordination', 'work_app',
-        ];
-        $actions = ['create', 'view', 'edit', 'update', 'delete'];
-
-        $permissions = [];
-        foreach ($features as $feature) {
-            foreach ($actions as $action) {
-                $permissions[] = "{$feature}.{$action}";
+        // Feature/action permissions, driven by config/app_permissions.php
+        // (the single source of truth also used by the Settings screen).
+        $validSlugs = [];
+        foreach (config('app_permissions.categories', []) as $category) {
+            foreach ($category['features'] as $feature => $def) {
+                foreach ($def['actions'] as $action) {
+                    $validSlugs[] = "{$feature}.{$action}";
+                }
             }
         }
 
-        // Keep legacy slugs for backward compatibility.
-        $permissions = array_merge($permissions, [
-            'view-dashboard',
-            'manage-users',
-            'manage-groups',
-            'manage-sanghs',
-            'manage-receipts',
-            'manage-meetings',
-            'manage-files',
-            'use-chat',
-        ]);
-
-        foreach ($permissions as $perm) {
-            Permission::firstOrCreate(['slug' => $perm]);
+        foreach ($validSlugs as $slug) {
+            Permission::firstOrCreate(['slug' => $slug]);
         }
 
-        // Assign all permissions to superadmin
+        // Remove permission rows that no longer correspond to a real feature/action
+        // (old speculative features like reports/export/tabs/pin/coordination/work_app/users,
+        // legacy manage-* slugs, and the retired standalone "update" action). Pivot rows in
+        // role_permission/permission_user cascade-delete automatically.
+        Permission::whereNotIn('slug', $validSlugs)->delete();
+
+        // Assign all current permissions to superadmin
         $superadmin = Role::where('slug', 'superadmin')->first();
         if ($superadmin) {
             $superadmin->permissions()->sync(Permission::pluck('id'));

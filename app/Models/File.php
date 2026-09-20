@@ -45,4 +45,13 @@ class File extends Model
     {
         return $this->uploader();
     }
+
+    public function isVisibleTo(User $user): bool
+    {
+        if ($user->hasRole('superadmin') || $this->uploaded_by === $user->id) {
+            return true;
+        }
+
+        return $this->folder && $this->folder->isVisibleTo($user);
+    }
 }

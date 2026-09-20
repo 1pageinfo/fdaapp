@@ -1,4 +1,4 @@
-@if(auth()->check() && (auth()->user()->hasRole('admin') || auth()->user()->hasRole('super-admin') || auth()->user()->hasRole('superadmin') || auth()->user()->hasRole('system-admin') || auth()->user()->id === 1))
+@if(auth()->check() && (auth()->user()->hasRole('superadmin') || auth()->user()->id === 1))
 <div class="card mb-4 border-info shadow-sm">
     <div class="card-header bg-info text-white">
         <i class="fa fa-user-circle"></i> Admin: Assign Form Ownership
@@ -169,7 +169,7 @@
 <div id="section_city_addr" class="form-row" @if(old('address_type', (!empty(optional($sangh)->address) || (!empty(optional($sangh)->city) && empty(optional($sangh)->village))) ? 'city' : 'village') === 'village') style="display:none" @endif>
     <div class="form-group col-md-4">
         <label>पत्ता / Address <span class="text-danger">*</span></label>
-        <input type="text" name="address" class="form-control marathi-only" value="{{ old('address', $sangh- required>address ?? '') }}">
+        <input type="text" name="address" class="form-control marathi-only" value="{{ old('address', $sangh->address ?? '') }}" required>
     </div>
     <div class="form-group col-md-3">
         <label>रस्ता / पथ / Road</label>

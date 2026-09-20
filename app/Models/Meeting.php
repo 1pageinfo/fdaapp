@@ -24,6 +24,8 @@ class Meeting extends Model
         'title',
         'start_at',
         'group_id',
+        'created_by',
+        'assigned_to',
     ];
 
     protected $casts = [
@@ -33,5 +35,35 @@ class Meeting extends Model
     public function group()
     {
         return $this->belongsTo(Group::class);
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function assignee()
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        if ($user->hasRole('superadmin')) {
+            return true;
+        }
+
+        if ($this->created_by === $user->id || $this->assigned_to === $user->id) {
+            return true;
+        }
+
+        return $this->group_id && $this->group()->whereHas('users', fn ($q) => $q->where('users.id', $user->id))->exists();
+    }
+
+    public function isManageableBy(User $user): bool
+    {
+        return $user->hasRole('superadmin')
+            || $this->created_by === $user->id
+            || $this->assigned_to === $user->id;
     }
 }

@@ -31,13 +31,27 @@
       <label class="form-label">Group (optional)</label>
       <select name="group_id" class="form-control">
         <option value="">— No group —</option>
-        @foreach(\App\Models\Group::all() as $g)
+        @foreach($groups as $g)
           <option value="{{ $g->id }}" {{ old('group_id') == $g->id ? 'selected' : '' }}>
             {{ $g->name }}
           </option>
         @endforeach
       </select>
     </div>
+
+    @if(auth()->check() && auth()->user()->hasRole('superadmin'))
+      <div class="mb-3">
+        <label class="form-label">Assign To</label>
+        <select name="assigned_to" class="form-control">
+          <option value="">-- No specific user (Unassigned) --</option>
+          @foreach($allUsers as $u)
+            <option value="{{ $u->id }}" {{ old('assigned_to') == $u->id ? 'selected' : '' }}>
+              {{ $u->name }}
+            </option>
+          @endforeach
+        </select>
+      </div>
+    @endif
 
     <button class="btn btn-primary">Create</button>
     <a href="{{ route('meetings.index') }}" class="btn btn-secondary">Cancel</a>

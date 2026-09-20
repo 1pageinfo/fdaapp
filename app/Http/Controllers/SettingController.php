@@ -10,16 +10,36 @@ use Illuminate\Support\Facades\Log;
 
 class SettingController extends Controller
 {
+    /**
+     * All valid "feature.action" slugs, as defined in config/app_permissions.php.
+     * Anything outside this set is rejected — permissions are curated, not free text.
+     */
+    private function validSlugs(): array
+    {
+        $slugs = [];
+        foreach (config('app_permissions.categories', []) as $category) {
+            foreach ($category['features'] as $feature => $def) {
+                foreach ($def['actions'] as $action) {
+                    $slugs[] = "{$feature}.{$action}";
+                }
+            }
+        }
+
+        return $slugs;
+    }
+
     // -------------------------------
     // INDEX
     // -------------------------------
     public function index(Request $request)
     {
-        $users = User::orderBy('name')->get();
+        $canManagePermissions = $request->user()->hasRole('superadmin');
+
+        $users = $canManagePermissions ? User::orderBy('name')->get() : collect();
         $selectedUser = null;
         $assignedSlugs = [];
 
-        if ($request->filled('user_id')) {
+        if ($canManagePermissions && $request->filled('user_id')) {
             $selectedUser = User::with('permissions')->find($request->user_id);
             if ($selectedUser) {
                 $assignedSlugs = $selectedUser->permissions->pluck('slug')->toArray();
@@ -31,13 +51,9 @@ class SettingController extends Controller
             'contact_email' => '',
         ];
 
-        $features = [
-            'dashboard','receipts','sanghs','meetings','folders','files','groups','chats',
-            'users','settings','reports','export','profile','search','notifications','tabs',
-            'pin','audit','sangh_fee','coordination','work_app'
-        ];
+        $categories = config('app_permissions.categories', []);
 
-        return view('settings.index', compact('users','selectedUser','assignedSlugs','settings','features'));
+        return view('settings.index', compact('users', 'selectedUser', 'assignedSlugs', 'settings', 'categories', 'canManagePermissions'));
     }
 
     // -------------------------------
@@ -55,17 +71,21 @@ class SettingController extends Controller
             ]);
         }
 
-        // Save user permissions
+        // Save user permissions — superadmin only. Granting permissions is itself a
+        // privileged action; a user with generic "settings.edit" must never be able
+        // to hand out permissions (including to themselves).
         if ($request->filled('user_id')) {
+            abort_unless($request->user()->hasRole('superadmin'), 403);
 
             $request->validate([
                 'user_id' => 'required|exists:users,id',
                 'permissions' => 'array',
-                'permissions.*' => 'string'
+                'permissions.*' => 'string',
             ]);
 
             $user = User::findOrFail($request->user_id);
-            $submittedSlugs = $request->input('permissions', []);
+            $validSlugs = $this->validSlugs();
+            $submittedSlugs = array_values(array_intersect($request->input('permissions', []), $validSlugs));
 
             Log::info("Updating permissions for User {$user->id}", [
                 'slugs' => $submittedSlugs
@@ -73,13 +93,7 @@ class SettingController extends Controller
 
             DB::beginTransaction();
             try {
-
-                $permissionIds = [];
-                foreach ($submittedSlugs as $slug) {
-                    $perm = Permission::firstOrCreate(['slug' => $slug]);
-                    $permissionIds[] = $perm->id;
-                }
-
+                $permissionIds = Permission::whereIn('slug', $submittedSlugs)->pluck('id');
                 $user->permissions()->sync($permissionIds);
 
                 DB::commit();

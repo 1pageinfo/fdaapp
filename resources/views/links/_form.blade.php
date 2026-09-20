@@ -71,6 +71,20 @@
     </div>
 </div>
 
+@if(auth()->check() && auth()->user()->hasRole('superadmin'))
+    <div class="mb-3">
+        <label class="form-label">Assign To</label>
+        <select name="assigned_to" class="form-control">
+            <option value="">-- No specific user (Unassigned) --</option>
+            @foreach($allUsers as $u)
+                <option value="{{ $u->id }}" {{ old('assigned_to', $link->assigned_to ?? '') == $u->id ? 'selected' : '' }}>
+                    {{ $u->name }}
+                </option>
+            @endforeach
+        </select>
+    </div>
+@endif
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const category = document.getElementById('category');

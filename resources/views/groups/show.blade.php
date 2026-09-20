@@ -142,24 +142,28 @@
                   <div class="small text-muted text-truncate">{{ $u->email }}</div>
                 </div>
 
-                {{-- Admin Toggle --}}
-                <form method="POST" action="{{ route('groups.users.admin', [$group, $u]) }}" class="mr-2">
-                  @csrf
-                  <input type="hidden" name="is_admin" value="{{ $u->pivot->is_admin ? 0 : 1 }}">
+                @if($canManageMembers)
+                  {{-- Admin Toggle --}}
+                  <form method="POST" action="{{ route('groups.users.admin', [$group, $u]) }}" class="mr-2">
+                    @csrf
+                    <input type="hidden" name="is_admin" value="{{ $u->pivot->is_admin ? 0 : 1 }}">
 
-                  <button class="btn btn-sm {{ $u->pivot->is_admin ? 'btn-success' : 'btn-outline-secondary' }}">
-                    {{ $u->pivot->is_admin ? 'Admin' : 'Make Admin' }}
-                  </button>
-                </form>
+                    <button class="btn btn-sm {{ $u->pivot->is_admin ? 'btn-success' : 'btn-outline-secondary' }}">
+                      {{ $u->pivot->is_admin ? 'Admin' : 'Make Admin' }}
+                    </button>
+                  </form>
 
-                {{-- Remove Member --}}
-                <form method="POST" action="{{ route('groups.members.remove', [$group, $u]) }}"
-                  onsubmit="return confirm('Remove {{ $u->name }} from this group?');">
-                  @csrf @method('DELETE')
-                  <button class="btn btn-sm btn-outline-danger" title="Remove">
-                    <i class="ti-close"></i>
-                  </button>
-                </form>
+                  {{-- Remove Member --}}
+                  <form method="POST" action="{{ route('groups.members.remove', [$group, $u]) }}"
+                    onsubmit="return confirm('Remove {{ $u->name }} from this group?');">
+                    @csrf @method('DELETE')
+                    <button class="btn btn-sm btn-outline-danger" title="Remove">
+                      <i class="ti-close"></i>
+                    </button>
+                  </form>
+                @elseif($u->pivot->is_admin)
+                  <span class="badge badge-light border">Admin</span>
+                @endif
 
               </li>
             @empty
@@ -168,26 +172,28 @@
           </ul>
         </div>
 
-        {{-- Add Member --}}
-        <div class="card shadow-sm">
-          <div class="card-body">
-            <form method="POST" action="{{ route('groups.members.add', $group) }}">
-              @csrf
-              <div class="form-group">
-                <label class="form-label">Add user</label>
-                <select name="user_id" class="form-control" required>
-                  <option value="">Select user…</option>
-                  @foreach($allUsers as $u)
-                    @if(!$group->users->contains('id', $u->id))
-                      <option value="{{ $u->id }}">{{ $u->name }} – {{ $u->email }}</option>
-                    @endif
-                  @endforeach
-                </select>
-              </div>
-              <button class="btn btn-primary btn-block">Add Member</button>
-            </form>
+        @if($canManageMembers)
+          {{-- Add Member --}}
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <form method="POST" action="{{ route('groups.members.add', $group) }}">
+                @csrf
+                <div class="form-group">
+                  <label class="form-label">Add user</label>
+                  <select name="user_id" class="form-control" required>
+                    <option value="">Select user…</option>
+                    @foreach($allUsers as $u)
+                      @if(!$group->users->contains('id', $u->id))
+                        <option value="{{ $u->id }}">{{ $u->name }} – {{ $u->email }}</option>
+                      @endif
+                    @endforeach
+                  </select>
+                </div>
+                <button class="btn btn-primary btn-block">Add Member</button>
+              </form>
+            </div>
           </div>
-        </div>
+        @endif
 
       </div>
 

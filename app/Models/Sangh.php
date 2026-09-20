@@ -115,4 +115,16 @@ class Sangh extends Model
     {
         return $this->belongsTo(User::class, 'assigned_to');
     }
+
+    public function isVisibleTo(User $user): bool
+    {
+        return $user->hasRole('superadmin')
+            || $this->created_by === $user->id
+            || $this->assigned_to === $user->id;
+    }
+
+    public function isManageableBy(User $user): bool
+    {
+        return $this->isVisibleTo($user);
+    }
 }

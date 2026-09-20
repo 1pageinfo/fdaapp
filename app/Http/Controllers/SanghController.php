@@ -41,6 +41,9 @@ class SanghController extends Controller
         'पुरुष सभासद संख्या',
         'महिला सभासद संख्या',
         'एकूण सभासद संख्या',
+        'प्रादेशिक प्रवेश शुल्क',
+        'प्रादेशिक वार्षिक शुल्क',
+        'प्रादेशिक विकास निधी शुल्क',
         'अध्यक्ष',
         'अध्यक्ष मोबाईल',
         'अध्यक्ष व्हॉट्सअप',
@@ -68,6 +71,14 @@ class SanghController extends Controller
 
     private function applyFilters($query, \Illuminate\Http\Request $request)
     {
+        // Members only ever see Sanghs they created or were assigned; superadmin sees all.
+        if (! $request->user()->hasRole('superadmin')) {
+            $userId = $request->user()->id;
+            $query->where(function ($q) use ($userId) {
+                $q->where('created_by', $userId)->orWhere('assigned_to', $userId);
+            });
+        }
+
         if ($request->filled('pradeshik_vibhag')) {
             $query->where('pradeshik_vibhag', $request->input('pradeshik_vibhag'));
         }
@@ -243,10 +254,11 @@ class SanghController extends Controller
     {
         $validated = $request->validate($this->rules());
         $this->assertMinimumMembers($validated);
+        $allowAssignedTo = $request->user()->hasRole('superadmin');
 
-        DB::transaction(function () use ($validated) {
+        DB::transaction(function () use ($validated, $allowAssignedTo) {
             $sangh = Sangh::create(array_merge(
-                $this->normalizePayload($validated),
+                $this->normalizePayload($validated, $allowAssignedTo),
                 [
                     'created_by' => Auth::id(),
                     'created_date' => now(),
@@ -267,13 +279,17 @@ class SanghController extends Controller
         return redirect()->route('sanghs.index')->with('success', 'Sangh created successfully.');
     }
 
-    public function edit(Sangh $sangh)
+    public function edit(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isManageableBy($request->user()), 403);
+
         $users = \App\Models\User::all();
         return view('sanghs.edit', array_merge(compact('sangh', 'users'), $this->feeFormData()));
     }
-    public function show(Sangh $sangh)
+    public function show(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isVisibleTo($request->user()), 403);
+
         $sangh->load(['creator', 'renewals', 'registrationReceipt']);
 
         $registrationYear = $this->intOrNull($sangh->registration_year);
@@ -442,6 +458,8 @@ class SanghController extends Controller
 
     public function update(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isManageableBy($request->user()), 403);
+
         $validated = $request->validate($this->rules(false));
         $this->assertMinimumMembers($validated);
 
@@ -472,7 +490,7 @@ class SanghController extends Controller
             ];
         }
 
-        $sangh->update(array_merge($this->normalizePayload($validated), $numbering));
+        $sangh->update(array_merge($this->normalizePayload($validated, $request->user()->hasRole('superadmin')), $numbering));
         $this->ensureRenewalsForSangh($sangh);
 
         return redirect()->route('sanghs.index')->with('success', 'Sangh updated successfully.');
@@ -504,8 +522,10 @@ class SanghController extends Controller
         return back()->with('success', 'Information Approved! Unique ID has been generated.');
     }
 
-    public function destroy(Sangh $sangh)
+    public function destroy(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isManageableBy($request->user()), 403);
+
         $sangh->delete();
         return redirect()->route('sanghs.index')->with('success', 'Sangh deleted.');
     }
@@ -538,6 +558,9 @@ class SanghController extends Controller
                 $s->male,
                 $s->female,
                 $s->total_members,
+                $s->pradeshik_admission_fee,
+                $s->pradeshik_annual_fee,
+                $s->pradeshik_development_fee,
                 $s->president,
                 $s->president_phone,
                 $s->president_whatsapp,
@@ -649,6 +672,9 @@ class SanghController extends Controller
                     'male' => $this->intOrNull($mapped['पुरुष सभासद संख्या'] ?? null),
                     'female' => $this->intOrNull($mapped['महिला सभासद संख्या'] ?? null),
                     'total_members' => $this->intOrNull($mapped['एकूण सभासद संख्या'] ?? null),
+                    'pradeshik_admission_fee' => $this->decimalOrNull($mapped['प्रादेशिक प्रवेश शुल्क'] ?? null),
+                    'pradeshik_annual_fee' => $this->decimalOrNull($mapped['प्रादेशिक वार्षिक शुल्क'] ?? null),
+                    'pradeshik_development_fee' => $this->decimalOrNull($mapped['प्रादेशिक विकास निधी शुल्क'] ?? null),
                     'president' => $mapped['अध्यक्ष'] ?? null,
                     'president_phone' => $mapped['अध्यक्ष मोबाईल'] ?? null,
                     'president_whatsapp' => $mapped['अध्यक्ष व्हॉट्सअप'] ?? null,
@@ -699,6 +725,9 @@ class SanghController extends Controller
             25,
             22,
             47,
+            5000,
+            6000,
+            2000,
             'President Name',
             '9000000001',
             '9000000001',
@@ -1002,14 +1031,13 @@ class SanghController extends Controller
         ];
     }
 
-    private function normalizePayload(array $validated): array
+    private function normalizePayload(array $validated, bool $allowAssignedTo = true): array
     {
         $male = $this->intOrNull($validated['male'] ?? null);
         $female = $this->intOrNull($validated['female'] ?? null);
         $totalMembers = ($male === null && $female === null) ? null : (($male ?? 0) + ($female ?? 0));
 
-        return [
-            'assigned_to' => $validated['assigned_to'] ?? null,
+        $payload = [
             'registration_year' => $validated['registration_year'] ?? null,
             'name_of_sangh' => $validated['name_of_sangh'] ?? null,
             'category_code' => $validated['category_code'] ?? null,
@@ -1044,6 +1072,12 @@ class SanghController extends Controller
             'secretary_email' => $validated['secretary_email'] ?? null,
             'email' => $validated['email'] ?? null,
         ];
+
+        if ($allowAssignedTo) {
+            $payload['assigned_to'] = $validated['assigned_to'] ?? null;
+        }
+
+        return $payload;
     }
 
     private function makeNumbering($vibhag, $district, $categoryCode, $sanghTypeCode, $createdDate = null)
@@ -1117,6 +1151,11 @@ class SanghController extends Controller
     private function intOrNull($value): ?int
     {
         return is_numeric($value) ? (int) $value : null;
+    }
+
+    private function decimalOrNull($value): ?float
+    {
+        return is_numeric($value) ? (float) $value : null;
     }
 
     private function codeChar($value): ?string

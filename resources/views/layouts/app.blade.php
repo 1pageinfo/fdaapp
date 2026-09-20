@@ -179,7 +179,7 @@
     {{-- Meetings --}}
           <li class="nav-item">
             <a class="nav-link" href="{{ route('links.index') }}"
-              data-perm="meetings.view">
+              data-perm="links.view">
               <i class="ti-link menu-icon"></i>
               <span class="menu-title">Links</span>
             </a>
@@ -225,19 +225,20 @@
             </a>
           </li>
 
-          {{-- Manage Users --}}
+          {{-- Manage Users (role assignment is superadmin-only, not permission-gated) --}}
+          @if(auth()->check() && auth()->user()->hasRole('superadmin'))
           <li class="nav-item">
-            <a class="nav-link {{ request()->is('admin/user-roles*') ? 'active' : '' }}" href="{{ route('admin.user_roles.index') }}"
-              data-perm="users.view|manage-users">
+            <a class="nav-link {{ request()->is('admin/user-roles*') ? 'active' : '' }}" href="{{ route('admin.user_roles.index') }}">
               <i class="ti-user menu-icon"></i>
               <span class="menu-title">Manage Users</span>
             </a>
           </li>
+          @endif
 
           {{-- Activity Logs --}}
           <li class="nav-item">
             <a class="nav-link {{ request()->is('admin/activity-logs*') ? 'active' : '' }}" href="{{ route('admin.activity_logs.index') }}"
-              data-perm="users.view|manage-users">
+              data-perm="audit.view">
               <i class="fa fa-history menu-icon"></i>
               <span class="menu-title">Activity Logs</span>
             </a>
