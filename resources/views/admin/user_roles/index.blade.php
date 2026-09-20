@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
 
     {{-- Header + search --}}
     <div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-3">

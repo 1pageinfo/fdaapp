@@ -2,7 +2,7 @@
 
 @section('content')
 
-<div class="container mt-4">
+<div class="container-fluid mt-4">
 
     <h2 class="d-flex align-items-center mb-3">
         <i class="ti-settings mr-2 d-none d-sm-inline"></i> Settings

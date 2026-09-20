@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
   <h3>Edit Folder</h3>
 <hr>
   <form action="{{ route('folders.update', $folder->id) }}" method="POST">

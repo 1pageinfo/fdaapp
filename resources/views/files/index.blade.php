@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('content')
-    <div class="container mt-4">
+    <div class="container-fluid mt-4">
         <div class="d-flex justify-content-between mb-3">
             <h2 class="d-flex justify-content-between align-items-center mb-3">Files</h2>
             <a href="{{ route('files.create') }}" class="btn btn-primary">New File</a>

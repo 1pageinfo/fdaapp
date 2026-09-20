@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-    <div class="container mt-4">
+    <div class="container-fluid mt-4">
         <h2 class="d-flex justify-content-between align-items-center mb-3">
             <span>Receipts</span>
             <!-- Actions -->

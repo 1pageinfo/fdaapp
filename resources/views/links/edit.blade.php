@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
     <h2>Edit Link</h2>
 
     <form action="{{ route('links.update', $link) }}" method="POST">

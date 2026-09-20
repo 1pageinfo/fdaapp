@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
   <h2 class="mb-2 mb-sm-0 d-flex align-items-center">Create Group</h2>
   <hr>
   <form method="POST" action="{{ route('groups.store') }}">

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
     <h2>Edit Chat</h2>
     <form method="POST" action="{{ route('chats.update',$item) }}">
         @csrf @method('PUT')

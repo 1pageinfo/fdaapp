@@ -258,10 +258,11 @@
       </nav>
       <!-- Body -->
       <div class="main-panel">
+        <div class="content-wrapper">
 
-        @yield('content')
+          @yield('content')
 
-
+        </div>
       </div>
       <!-- page-body-wrapper ends -->
     </div>

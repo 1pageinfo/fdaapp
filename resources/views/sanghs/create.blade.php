@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
     <h2>Create Sangh</h2>
     <hr>
     @if($errors->any())

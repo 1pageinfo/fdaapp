@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container">
+<div class="container-fluid">
   <h3>Edit Group</h3>
 
   <form action="{{ route('groups.update', $group) }}" method="POST">

@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
     <h2 class="mb-3 d-flex justify-content-between align-items-center">
         <span>Links</span>
         <a href="{{ route('links.create') }}" class="btn btn-primary">Add Link</a>

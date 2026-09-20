@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container mt-3">
+<div class="container-fluid mt-3">
     <h4>Edit File</h4>
 
     <form action="{{ route('files.update', $file->id) }}" method="POST" enctype="multipart/form-data">

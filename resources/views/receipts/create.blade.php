@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
     <h2 class="mb-2 mb-sm-0 d-flex align-items-center">Add New Receipt</h2>
     <hr>
 

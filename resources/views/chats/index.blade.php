@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('content')
-<div class="container mt-4">
+<div class="container-fluid mt-4">
     <div class="d-flex justify-content-between mb-3">
         <h2>Chats</h2>
         <a href="{{ route('chats.create') }}" class="btn btn-primary">New Chat</a>

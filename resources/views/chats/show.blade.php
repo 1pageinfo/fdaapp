@@ -253,7 +253,7 @@
   }
 </style>
 
-<div class="container py-3">
+<div class="container-fluid py-3">
   <!-- Header -->
   <div class="d-flex align-items-center gap-3 mb-2" style="height: var(--header-h);">
     <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white"
