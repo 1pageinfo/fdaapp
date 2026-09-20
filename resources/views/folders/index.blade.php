@@ -33,7 +33,7 @@
                 $palette = ['bg-primary', 'bg-success', 'bg-info', 'bg-warning', 'bg-danger', 'bg-secondary'];
                 $color = $palette[($folder->id ?? 0) % count($palette)];
             @endphp
-            <div class="col-6 col-md-4 col-xl-3 folder-item sortable-item" data-id="{{ $folder->id }}"
+            <div class="col-6 col-md-4 col-xl-3 mb-3 folder-item sortable-item" data-id="{{ $folder->id }}"
                  data-name="{{ Str::lower($folder->name) }}" draggable="true">
                 <div class="card shadow-sm h-100 border-0 folder-card position-relative">
 
