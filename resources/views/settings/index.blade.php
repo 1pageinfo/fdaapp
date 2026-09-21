@@ -4,9 +4,12 @@
 
 <div class="container-fluid mt-4">
 
-    <h2 class="d-flex align-items-center mb-3">
-        <i class="ti-settings mr-2 d-none d-sm-inline"></i> Settings
-    </h2>
+    <div class="mb-4">
+        <h2 class="d-flex align-items-center mb-1">
+            <i class="ti-settings mr-2 d-none d-sm-inline"></i> Settings
+        </h2>
+        <p class="text-muted mb-0">Manage application preferences, Sangh fee slabs, user roles, and permissions.</p>
+    </div>
 
     @if(session('success'))
         <div class="alert alert-success">{{ session('success') }}</div>
@@ -15,17 +18,41 @@
         <div class="alert alert-danger">{{ implode(', ', $errors->all()) }}</div>
     @endif
 
-    <div class="row">
-        {{-- General app settings --}}
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm border-0 h-100">
+    @php
+        $activeTab = $selectedUser ? 'access' : 'general';
+    @endphp
+
+    {{-- Tab navigation --}}
+    <ul class="nav nav-pills settings-tabs mb-4" id="settingsTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link {{ $activeTab === 'general' ? 'active' : '' }}" data-toggle="tab" href="#tab-general" role="tab">
+                <i class="ti-control-shuffle mr-1"></i> General
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {{ $activeTab === 'access' ? 'active' : '' }}" data-toggle="tab" href="#tab-access" role="tab">
+                <i class="ti-shield mr-1"></i> Roles &amp; Access
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-toggle="tab" href="#tab-fees" role="tab">
+                <i class="ti-money mr-1"></i> Sangh Fees
+            </a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="settingsTabsContent">
+
+        {{-- ===================== GENERAL ===================== --}}
+        <div class="tab-pane fade {{ $activeTab === 'general' ? 'show active' : '' }}" id="tab-general" role="tabpanel">
+            <div class="card shadow-sm border-0">
                 <div class="card-body">
                     <h5 class="d-flex align-items-center mb-1">
-                        <i class="ti-control-shuffle mr-2 text-primary"></i> General
+                        <i class="ti-control-shuffle mr-2 text-primary"></i> Application Details
                     </h5>
-                    <p class="text-muted small mb-3">Basic application details.</p>
+                    <p class="text-muted small mb-4">Basic information shown across the app.</p>
 
-                    <form method="POST" action="{{ route('settings.update') }}">
+                    <form method="POST" action="{{ route('settings.update') }}" class="col-lg-6 p-0">
                         @csrf @method('PUT')
 
                         <div class="mb-3">
@@ -41,55 +68,37 @@
                         </div>
 
                         <button class="btn btn-primary btn-sm">
-                            <i class="ti-save mr-1"></i>Save
+                            <i class="ti-save mr-1"></i>Save Changes
                         </button>
                     </form>
                 </div>
             </div>
         </div>
 
-        {{-- Sangh fee slabs --}}
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body d-flex flex-column">
-                    <h5 class="d-flex align-items-center mb-1">
-                        <i class="ti-money mr-2 text-success"></i> Sangh Fee Slabs
-                    </h5>
-                    <p class="text-muted small mb-3">
-                        Manage प्रवेश शुल्क, वार्षिक शुल्क (by member count) and विकास निधी शुल्क used in Sangh registrations.
-                    </p>
-                    <a href="{{ route('settings.sangh_fees.edit') }}" class="btn btn-outline-success btn-sm mt-auto align-self-start"
-                       data-perm="sangh_fee.view|sangh_fee.edit">
-                        <i class="ti-settings mr-1"></i> Manage Fee Slabs
-                    </a>
-                </div>
-            </div>
-        </div>
+        {{-- ===================== ROLES & ACCESS ===================== --}}
+        <div class="tab-pane fade {{ $activeTab === 'access' ? 'show active' : '' }}" id="tab-access" role="tabpanel">
 
-    </div>
-
-    <div class="row">
-        {{-- Shortcut to user role management --}}
-        <div class="col-lg-4 mb-4">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body d-flex flex-column">
-                    <h5 class="d-flex align-items-center mb-1">
-                        <i class="ti-shield mr-2 text-danger"></i> User Roles
-                    </h5>
-                    <p class="text-muted small mb-3">
-                        Assign superadmin or member roles to users, or remove a user account.
-                    </p>
-                    <a href="{{ route('admin.user_roles.index') }}" class="btn btn-outline-danger btn-sm mt-auto align-self-start">
+            {{-- Shortcut to user role management --}}
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <div class="d-flex align-items-center">
+                        <div class="settings-tile bg-danger text-white mr-3">
+                            <i class="ti-shield"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-1">User Roles</h6>
+                            <p class="text-muted small mb-0">Assign superadmin or member roles, or remove a user account.</p>
+                        </div>
+                    </div>
+                    <a href="{{ route('admin.user_roles.index') }}" class="btn btn-outline-danger btn-sm">
                         <i class="ti-user mr-1"></i> Manage User Roles
                     </a>
                 </div>
             </div>
-        </div>
 
-        @if($canManagePermissions)
-        {{-- Permission Manager --}}
-        <div class="col-lg-8 mb-4">
-            <div class="card shadow-sm border-0 h-100">
+            @if($canManagePermissions)
+            {{-- Permission Manager --}}
+            <div class="card shadow-sm border-0">
                 <div class="card-body">
                     <h5 class="d-flex align-items-center mb-1">
                         <i class="ti-key mr-2 text-warning"></i> User Permissions
@@ -196,11 +205,37 @@
                 </div>
 
                 </form>
+                    @else
+                        <p class="text-muted small mb-0 mt-3">Search for a user above to view or edit their permissions.</p>
                     @endif
                 </div>
             </div>
+            @endif
         </div>
-        @endif
+
+        {{-- ===================== SANGH FEES ===================== --}}
+        <div class="tab-pane fade" id="tab-fees" role="tabpanel">
+            <div class="card shadow-sm border-0">
+                <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <div class="d-flex align-items-center">
+                        <div class="settings-tile bg-success text-white mr-3">
+                            <i class="ti-money"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-1">Sangh Fee Slabs</h6>
+                            <p class="text-muted small mb-0">
+                                Manage प्रवेश शुल्क, वार्षिक शुल्क (by member count) and विकास निधी शुल्क used in Sangh registrations.
+                            </p>
+                        </div>
+                    </div>
+                    <a href="{{ route('settings.sangh_fees.edit') }}" class="btn btn-outline-success btn-sm"
+                       data-perm="sangh_fee.view|sangh_fee.edit">
+                        <i class="ti-settings mr-1"></i> Manage Fee Slabs
+                    </a>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -213,6 +248,29 @@
         align-items: center;
         justify-content: center;
         font-weight: 700;
+    }
+
+    .settings-tile {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    .settings-tabs .nav-link {
+        border-radius: 999px;
+        padding: .5rem 1.1rem;
+        color: #495057;
+        font-weight: 500;
+    }
+
+    .settings-tabs .nav-link.active {
+        background: #0d6efd;
+        color: #fff;
     }
 
     .perm-category .list-group-item {
