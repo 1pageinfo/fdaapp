@@ -94,14 +94,6 @@
                     Next <i class="fa fa-chevron-right"></i>
                 </button>
             @endif
-            @if(empty($sangh->unique_ref_no))
-            <form action="{{ route('sanghs.approve', $sangh) }}" method="POST" style="display:inline;">
-                @csrf
-                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Are you sure you want to approve this Sangh? This will generate the Unique ID.');">
-                    <i class="fa fa-check-circle"></i> Approve Info
-                </button>
-            </form>
-            @endif
             <a href="{{ route('sanghs.edit', $sangh) }}" class="btn btn-sm btn-primary">
                 <i class="fa fa-edit"></i> Edit
             </a>

@@ -132,15 +132,14 @@ Route::middleware('auth')->group(function () {
     Route::post('sanghs-import', [SanghController::class, 'importExcel'])->name('sanghs.import');
     Route::get('sanghs-template', [SanghController::class, 'downloadTemplate'])->name('sanghs.template');
     Route::post('sanghs-seed-placeholders', [SanghController::class, 'seedPlaceholders'])->name('sanghs.seed_placeholders');
-    Route::post('/sanghs/{sangh}/registration-receipt', [SanghController::class, 'updateRegistrationReceipt'])->name('sanghs.registration_receipt.update');
-    Route::post('/sanghs/{sangh}/renewals/create-year', [SanghController::class, 'createRenewal'])->name('sanghs.renewals.create');
-    Route::delete('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'destroyRenewal'])->name('sanghs.renewals.destroy');
-    Route::post('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'updateRenewal'])->name('sanghs.renewals.update');
+    Route::post('/sanghs/{sangh}/registration-receipt', [SanghController::class, 'updateRegistrationReceipt'])->name('sanghs.registration_receipt.update')->middleware('permission:sanghs.edit');
+    Route::post('/sanghs/{sangh}/renewals/create-year', [SanghController::class, 'createRenewal'])->name('sanghs.renewals.create')->middleware('permission:sanghs.edit');
+    Route::delete('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'destroyRenewal'])->name('sanghs.renewals.destroy')->middleware('permission:sanghs.delete');
+    Route::post('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'updateRenewal'])->name('sanghs.renewals.update')->middleware('permission:sanghs.edit');
     Route::get('/sanghs/{sangh}/receipt/{year}/pdf', [SanghController::class, 'downloadReceiptPdf'])->name('sanghs.receipt.pdf');
     Route::get('/sanghs/{sangh}/pdf', [SanghController::class, 'downloadPdf'])->name('sanghs.pdf');         // generate & stream download
     Route::get('/sanghs/{sangh}/save-pdf', [SanghController::class, 'savePdfToStorage'])->name('sanghs.save_pdf'); // save to storage & return link
     Route::get('/sanghs/{sangh}/download-stored', [SanghController::class, 'downloadStoredPdf'])->name('sanghs.download_stored'); // download saved file
-    Route::post('/sanghs/{sangh}/approve', [SanghController::class, 'approveInformation'])->name('sanghs.approve')->middleware('superadmin');
 
 
 

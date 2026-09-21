@@ -373,6 +373,8 @@ class SanghController extends Controller
 
     public function updateRegistrationReceipt(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isManageableBy($request->user()), 403);
+
         $validated = $request->validate([
             'status' => 'required|in:unpaid,paid,information_approved,sangh_registered',
             'feskcom_receipt_date' => 'nullable|date',
@@ -436,20 +438,15 @@ class SanghController extends Controller
             'cheque_date' => $validated['cheque_date'] ?? null,
         ]);
 
-        if ($isPaid && in_array($status, ['information_approved', 'sangh_registered'])) {
-            if ($sangh->sangh_sr_no === null) {
-                $numbering = $this->makeNumbering(
-                    $sangh->pradeshik_vibhag,
-                    $sangh->district,
-                    $sangh->pradeshik_vibhag_code,
-                    $sangh->district_code,
-                    $sangh->category_code,
-                    $sangh->sangh_type_code,
-                    null, null, null,
-                    $sangh->created_date
-                );
-                $sangh->update($numbering);
-            }
+        if ($status === 'sangh_registered' && $sangh->sangh_sr_no === null) {
+            $numbering = $this->makeNumbering(
+                $sangh->pradeshik_vibhag,
+                $sangh->district,
+                $sangh->category_code,
+                $sangh->sangh_type_code,
+                $sangh->created_date
+            );
+            $sangh->update($numbering);
         }
 
         return redirect()->route('sanghs.show', $sangh)->with('success', 'New register Sangh receipt updated.');
@@ -466,29 +463,14 @@ class SanghController extends Controller
         $selectedVibhag = $validated['pradeshik_vibhag'] ?? null;
         $selectedDistrict = $validated['district'] ?? null;
 
-        $keepVibhagSerial = $sangh->pradeshik_vibhag === $selectedVibhag;
-        $keepDistrictSerial = $sangh->district === $selectedDistrict;
-
-        $numbering = [];
-        if ($sangh->sangh_sr_no !== null) {
-            $numbering = $this->makeNumbering(
-                $selectedVibhag,
-                $selectedDistrict,
-                $validated['pradeshik_vibhag_code'] ?? null,
-                $validated['district_code'] ?? null,
-                $validated['category_code'] ?? null,
-                $validated['sangh_type_code'] ?? null,
-                $sangh->sangh_sr_no,
-                $keepVibhagSerial ? $sangh->pradeshik_sr_no : null,
-                $keepDistrictSerial ? $sangh->district_sr_no : null,
-                $sangh->created_date
-            );
-        } else {
-            $numbering = [
-                'pradeshik_vibhag_code' => $this->normalizeCode($validated['pradeshik_vibhag_code'] ?? $selectedVibhag),
-                'district_code' => $this->normalizeCode($validated['district_code'] ?? $selectedDistrict),
-            ];
-        }
+        // Numbering (sangh_sr_no, unique_ref_no, pradeshik/district ref no) is assigned once,
+        // when the receipt/renewal status first becomes "sangh_registered" — never regenerated
+        // on a plain edit. Only the short display codes are kept in sync with the selected
+        // vibhag/district here.
+        $numbering = [
+            'pradeshik_vibhag_code' => $this->normalizeCode($validated['pradeshik_vibhag_code'] ?? $selectedVibhag),
+            'district_code' => $this->normalizeCode($validated['district_code'] ?? $selectedDistrict),
+        ];
 
         $sangh->update(array_merge($this->normalizePayload($validated, $request->user()->hasRole('superadmin')), $numbering));
         $this->ensureRenewalsForSangh($sangh);
@@ -496,31 +478,6 @@ class SanghController extends Controller
         return redirect()->route('sanghs.index')->with('success', 'Sangh updated successfully.');
     }
 
-
-    public function approveInformation(\Illuminate\Http\Request $request, Sangh $sangh)
-    {
-        if ($sangh->unique_ref_no) {
-            return back()->with('error', 'Sangh is already approved and has a Unique Ref No.');
-        }
-
-        // Generate the IDs
-        $numbering = $this->makeNumbering(
-            $sangh->pradeshik_vibhag,
-            $sangh->district,
-            $sangh->category_code,
-            $sangh->sangh_type_code,
-            $sangh->created_date
-        );
-
-        $sangh->update($numbering);
-
-        // Optionally update the registration receipt status
-        if ($sangh->registrationReceipt) {
-            $sangh->registrationReceipt->update(['status' => 'information_approved']);
-        }
-
-        return back()->with('success', 'Information Approved! Unique ID has been generated.');
-    }
 
     public function destroy(Request $request, Sangh $sangh)
     {
@@ -642,14 +599,10 @@ class SanghController extends Controller
 
                 $pradeshikVibhag = $mapped['प्रादेशिक विभाग'] ?? null;
                 $district = $mapped['जिल्हा'] ?? null;
-                $pradeshikCode = $this->extractCodePart($mapped['प्रादेशिक विभागातील संघाचा अनु क्र.'] ?? null);
-                $districtCode = $this->extractCodePart($mapped['जिल्हा मधे संघाचा अनु. क्र.'] ?? null);
 
                 $numbering = $this->makeNumbering(
                     $pradeshikVibhag,
                     $district,
-                    $pradeshikCode,
-                    $districtCode,
                     $this->codeChar($mapped['श्रेणी'] ?? null),
                     $this->codeChar($mapped['संघ प्रकार'] ?? null)
                 );
@@ -854,6 +807,8 @@ class SanghController extends Controller
 
     public function createRenewal(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isManageableBy($request->user()), 403);
+
         $request->validate([
             'renewal_year' => ['required', 'integer', 'min:1970', 'max:' . (int) date('Y')],
         ]);
@@ -886,8 +841,10 @@ class SanghController extends Controller
         return redirect()->route('sanghs.show', $sangh)->with('success', "Year {$year} renewal record created.");
     }
 
-    public function destroyRenewal(Sangh $sangh, int $year)
+    public function destroyRenewal(Request $request, Sangh $sangh, int $year)
     {
+        abort_unless($sangh->isManageableBy($request->user()), 403);
+
         SanghRenewal::query()
             ->where('sangh_id', $sangh->id)
             ->where('renewal_year', $year)
@@ -897,6 +854,8 @@ class SanghController extends Controller
 
     public function updateRenewal(Request $request, Sangh $sangh, int $year)
     {
+        abort_unless($sangh->isManageableBy($request->user()), 403);
+
         $validated = $request->validate([
             'status' => 'required|in:unpaid,paid,information_approved,sangh_registered',
             'feskcom_receipt_date' => 'nullable|date',
@@ -956,6 +915,17 @@ class SanghController extends Controller
             'cheque_no' => $validated['cheque_no'] ?? null,
             'cheque_date' => $validated['cheque_date'] ?? null,
         ]);
+
+        if ($status === 'sangh_registered' && $sangh->sangh_sr_no === null) {
+            $numbering = $this->makeNumbering(
+                $sangh->pradeshik_vibhag,
+                $sangh->district,
+                $sangh->category_code,
+                $sangh->sangh_type_code,
+                $sangh->created_date
+            );
+            $sangh->update($numbering);
+        }
 
         return redirect()->route('sanghs.show', $sangh)->with('success', 'Renewal updated.');
     }
@@ -1164,15 +1134,6 @@ class SanghController extends Controller
             return null;
         }
         return strtoupper(Str::substr(trim((string) $value), 0, 1));
-    }
-
-    private function extractCodePart($value): ?string
-    {
-        if (!$value) {
-            return null;
-        }
-        $parts = explode('/', (string) $value);
-        return trim($parts[0] ?? '');
     }
 
     private function importRenewals(array $renewalRows): void
