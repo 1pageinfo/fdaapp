@@ -154,6 +154,9 @@
     <div class="form-group col-md-4">
         <label>तालुका <span class="text-danger">*</span></label>
         <select name="taluka" id="taluka" class="form-control" required><option value="">Select तालुका</option></select>
+        <input type="text" id="taluka_freetext" name="taluka" class="form-control marathi-only mt-1"
+               value="{{ old('taluka', $sangh->taluka ?? '') }}" placeholder="तालुका टाका" style="display:none" disabled>
+        <small class="form-text text-muted d-none" id="taluka_freetext_hint">This district has no preset तालुका list — please type it in.</small>
     </div>
     <div class="form-group col-md-4">
         <label>गाव <span class="text-danger">*</span></label>
@@ -552,9 +555,44 @@
             filterDistricts(this.value);
         });
 
+        const talukaFreeText = document.getElementById('taluka_freetext');
+        const talukaFreeTextHint = document.getElementById('taluka_freetext_hint');
+
         function populateTalukas(sel) {
+            const options = districtTalukaMap[sel] || [];
+
+            // Only fall back to free-text once a real district with no taluka
+            // data has been chosen — not on initial load before any selection.
+            if (sel && options.length === 0) {
+                // No taluka list for this district (e.g. Mumbai City/Other) \u2014 don't
+                // leave a required dropdown permanently unsatisfiable; let the user
+                // type it in instead of forcing a choice that can't exist.
+                talukaSelect.style.display = 'none';
+                talukaSelect.required = false;
+                talukaSelect.disabled = true;
+                talukaSelect.innerHTML = '<option value="">Select \u0924\u093e\u0932\u0941\u0915\u093e</option>';
+
+                if (talukaFreeText) {
+                    talukaFreeText.style.display = '';
+                    talukaFreeText.required = true;
+                    talukaFreeText.disabled = false;
+                }
+                if (talukaFreeTextHint) talukaFreeTextHint.classList.remove('d-none');
+                return;
+            }
+
+            if (talukaFreeText) {
+                talukaFreeText.style.display = 'none';
+                talukaFreeText.required = false;
+                talukaFreeText.disabled = true;
+            }
+            if (talukaFreeTextHint) talukaFreeTextHint.classList.add('d-none');
+            talukaSelect.style.display = '';
+            talukaSelect.required = true;
+            talukaSelect.disabled = false;
+
             talukaSelect.innerHTML = '<option value="">Select \u0924\u093e\u0932\u0941\u0915\u093e</option>';
-            (districtTalukaMap[sel] || []).forEach(function(t) {
+            options.forEach(function(t) {
                 var o = document.createElement('option');
                 o.value = t; o.textContent = t;
                 if (t === savedTaluka) o.selected = true;
@@ -638,17 +676,25 @@
         const btnAddrVillage = document.getElementById('btn_addr_village');
         const btnAddrCity    = document.getElementById('btn_addr_city');
 
+        // Captured once, before any toggling, so both lists stay complete.
+        const villageRequiredFields = sectionVillage ? Array.from(sectionVillage.querySelectorAll('[required]')) : [];
+        const cityRequiredFields    = sectionCity ? Array.from(sectionCity.querySelectorAll('[required]')) : [];
+
         function setAddrType(type) {
             if (!addrTypeField) return;
             addrTypeField.value = type;
             if (type === 'village') {
                 if (sectionVillage) sectionVillage.style.display = '';
                 if (sectionCity)    sectionCity.style.display    = 'none';
+                villageRequiredFields.forEach(el => { el.required = true; });
+                cityRequiredFields.forEach(el => { el.required = false; });
                 if (btnAddrVillage) { btnAddrVillage.classList.remove('btn-outline-primary'); btnAddrVillage.classList.add('btn-primary'); }
                 if (btnAddrCity)    { btnAddrCity.classList.remove('btn-primary');    btnAddrCity.classList.add('btn-outline-primary'); }
             } else {
                 if (sectionVillage) sectionVillage.style.display = 'none';
                 if (sectionCity)    sectionCity.style.display    = '';
+                villageRequiredFields.forEach(el => { el.required = false; });
+                cityRequiredFields.forEach(el => { el.required = true; });
                 if (btnAddrCity)    { btnAddrCity.classList.remove('btn-outline-primary');    btnAddrCity.classList.add('btn-primary'); }
                 if (btnAddrVillage) { btnAddrVillage.classList.remove('btn-primary'); btnAddrVillage.classList.add('btn-outline-primary'); }
             }
@@ -656,6 +702,11 @@
 
         if (btnAddrVillage) btnAddrVillage.addEventListener('click', function() { setAddrType('village'); });
         if (btnAddrCity)    btnAddrCity.addEventListener('click',    function() { setAddrType('city'); });
+
+        // Sync required attributes with whichever section is visible on initial load
+        // (the initial display:none is set server-side in Blade, but the `required`
+        // attribute is static HTML regardless of which section starts hidden).
+        if (addrTypeField) setAddrType(addrTypeField.value === 'city' ? 'city' : 'village');
 
         function sanitizeWholeNumberInput(input) {
             if (!input) return '';
