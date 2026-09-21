@@ -347,25 +347,27 @@ class SanghController extends Controller
             fn($y) => !in_array($y, $usedYears, true)
         ));
 
-        // Quick prev/next navigation between sangh records (ordered by sr. no., same as the listing).
+        // Quick prev/next navigation between sangh records (ordered by sr. no., same as the
+        // listing). sangh_sr_no is nullable (unregistered sanghs have none yet), so comparisons
+        // use COALESCE to a sentinel below any real sr_no — this keeps the same "nulls sort
+        // first" ordering as the index page's plain `orderBy('sangh_sr_no')` while avoiding
+        // Laravel's where('col', '<', null) guard, which throws rather than silently matching nothing.
+        $sortKey = $sangh->sangh_sr_no ?? -1;
+
         $prevSangh = Sangh::query()
-            ->where(function ($q) use ($sangh) {
-                $q->where('sangh_sr_no', '<', $sangh->sangh_sr_no)
-                    ->orWhere(function ($q2) use ($sangh) {
-                        $q2->where('sangh_sr_no', $sangh->sangh_sr_no)->where('id', '<', $sangh->id);
-                    });
-            })
-            ->orderByDesc('sangh_sr_no')->orderByDesc('id')
+            ->whereRaw('(COALESCE(sangh_sr_no, -1) < ?) OR (COALESCE(sangh_sr_no, -1) = ? AND id < ?)', [
+                $sortKey, $sortKey, $sangh->id,
+            ])
+            ->orderByRaw('COALESCE(sangh_sr_no, -1) DESC')
+            ->orderByDesc('id')
             ->first(['id']);
 
         $nextSangh = Sangh::query()
-            ->where(function ($q) use ($sangh) {
-                $q->where('sangh_sr_no', '>', $sangh->sangh_sr_no)
-                    ->orWhere(function ($q2) use ($sangh) {
-                        $q2->where('sangh_sr_no', $sangh->sangh_sr_no)->where('id', '>', $sangh->id);
-                    });
-            })
-            ->orderBy('sangh_sr_no')->orderBy('id')
+            ->whereRaw('(COALESCE(sangh_sr_no, -1) > ?) OR (COALESCE(sangh_sr_no, -1) = ? AND id > ?)', [
+                $sortKey, $sortKey, $sangh->id,
+            ])
+            ->orderByRaw('COALESCE(sangh_sr_no, -1) ASC')
+            ->orderBy('id')
             ->first(['id']);
 
         return view('sanghs.show', compact('sangh', 'renewals', 'availableYears', 'newRegisterReceipt', 'registrationYear', 'prevSangh', 'nextSangh'));
