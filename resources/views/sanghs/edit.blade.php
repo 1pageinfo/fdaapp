@@ -3,7 +3,7 @@
 @section('content')
 @php($sangh = $sangh ?? new \App\Models\Sangh())
 <div class="container-fluid mt-4">
-    <h2>Edit Sangh — #{{ $sangh->sangh_sr_no }}</h2>
+    <h2>Edit Sangh{{ $sangh->sangh_sr_no ? ' — #' . $sangh->sangh_sr_no : ' (not yet registered)' }}</h2>
 <hr>
     @if(session('success'))
       <div class="alert alert-success">{{ session('success') }}</div>

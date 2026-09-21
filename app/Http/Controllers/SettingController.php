@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\Permission;
 use Illuminate\Support\Facades\DB;
@@ -47,8 +48,8 @@ class SettingController extends Controller
         }
 
         $settings = [
-            'app_name' => config('app.name'),
-            'contact_email' => '',
+            'app_name' => Setting::getValue('app_name', config('app.name')),
+            'contact_email' => Setting::getValue('contact_email', ''),
         ];
 
         $categories = config('app_permissions.categories', []);
@@ -65,10 +66,19 @@ class SettingController extends Controller
 
         // Save app settings (optional)
         if ($request->filled('app_name') || $request->has('contact_email')) {
-            Log::info('Saving app settings', [
-                'app_name' => $request->input('app_name'),
-                'contact_email' => $request->input('contact_email')
+            abort_unless($request->user()->hasRole('superadmin') || $request->user()->hasPermission('settings.edit'), 403);
+
+            $request->validate([
+                'app_name' => 'nullable|string|max:255',
+                'contact_email' => 'nullable|email|max:255',
             ]);
+
+            if ($request->filled('app_name')) {
+                Setting::set('app_name', $request->input('app_name'));
+            }
+            if ($request->has('contact_email')) {
+                Setting::set('contact_email', $request->input('contact_email'));
+            }
         }
 
         // Save user permissions — superadmin only. Granting permissions is itself a

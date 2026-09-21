@@ -21,6 +21,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\SanghFeeSettingController;
+use App\Http\Controllers\ContactController;
 
 // Redirect root → dashboard
 Route::get('/', fn() => redirect()->route('dashboard'));
@@ -29,24 +30,26 @@ Route::get('/', fn() => redirect()->route('dashboard'));
 // 🔑 Authentication
 // ----------------------
 
-// Register
-Route::get('register', [RegisterController::class, 'showRegistrationForm'])->name('register');
-Route::post('register', [RegisterController::class, 'register'])->name('register.submit');
+Route::middleware('guest')->group(function () {
+    // Register
+    Route::get('register', [RegisterController::class, 'showRegistrationForm'])->name('register');
+    Route::post('register', [RegisterController::class, 'register'])->name('register.submit');
 
-// Login
-Route::get('login', [LoginController::class, 'showLoginForm'])->name('login');
-Route::post('login', [LoginController::class, 'login'])->name('login.submit');
+    // Login
+    Route::get('login', [LoginController::class, 'showLoginForm'])->name('login');
+    Route::post('login', [LoginController::class, 'login'])->name('login.submit');
 
-// Logout
+    // Forgot password
+    Route::get('password/forgot', [ForgotPasswordController::class, 'showLinkRequestForm'])->name('password.request');
+    Route::post('password/email', [ForgotPasswordController::class, 'sendResetLinkEmail'])->name('password.email');
+
+    // Reset password
+    Route::get('password/reset/{token}', [ResetPasswordController::class, 'showResetForm'])->name('password.reset');
+    Route::post('password/reset', [ResetPasswordController::class, 'reset'])->name('password.update');
+});
+
+// Logout (must stay reachable while authenticated)
 Route::post('logout', [LoginController::class, 'logout'])->name('logout');
-
-// Forgot password
-Route::get('password/forgot', [ForgotPasswordController::class, 'showLinkRequestForm'])->name('password.request');
-Route::post('password/email', [ForgotPasswordController::class, 'sendResetLinkEmail'])->name('password.email');
-
-// Reset password
-Route::get('password/reset/{token}', [ResetPasswordController::class, 'showResetForm'])->name('password.reset');
-Route::post('password/reset', [ResetPasswordController::class, 'reset'])->name('password.update');
 
 // ----------------------
 // 🔐 Protected Routes
@@ -54,10 +57,7 @@ Route::post('password/reset', [ResetPasswordController::class, 'reset'])->name('
 Route::middleware('auth')->group(function () {
 
     // Dashboard
-    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-
-    // Chat polling (no websockets)
-    Route::get('/chat/poll', [DashboardController::class, 'pollChat'])->name('chat.poll');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard')->middleware('permission:dashboard.view');
 
     // Resources
     Route::resource('groups', GroupController::class)
@@ -65,8 +65,7 @@ Route::middleware('auth')->group(function () {
         ->middlewareFor(['create', 'store'], 'permission:groups.create')
         ->middlewareFor(['edit', 'update'], 'permission:groups.edit')
         ->middlewareFor('destroy', 'permission:groups.delete');
-    Route::resource('chats', ChatController::class);
-    Route::resource('files', FileController::class)
+    Route::resource('files', FileController::class)->except(['show'])
         ->middlewareFor(['index'], 'permission:files.view')
         ->middlewareFor(['create', 'store'], 'permission:files.create')
         ->middlewareFor(['edit', 'update'], 'permission:files.edit')
@@ -90,8 +89,8 @@ Route::middleware('auth')->group(function () {
         ->middlewareFor(['create', 'store'], 'permission:sanghs.create')
         ->middlewareFor(['edit', 'update'], 'permission:sanghs.edit')
         ->middlewareFor('destroy', 'permission:sanghs.delete');
-    Route::resource('links', LinkController::class)
-        ->middlewareFor(['index', 'show'], 'permission:links.view')
+    Route::resource('links', LinkController::class)->except(['show'])
+        ->middlewareFor(['index'], 'permission:links.view')
         ->middlewareFor(['create', 'store'], 'permission:links.create')
         ->middlewareFor(['edit', 'update'], 'permission:links.edit')
         ->middlewareFor('destroy', 'permission:links.delete');
@@ -113,6 +112,9 @@ Route::middleware('auth')->group(function () {
     Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::put('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
 
+    // Contacts directory
+    Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index')->middleware('permission:contacts.view');
+
     Route::prefix('admin')->group(function () {
         Route::middleware('superadmin')->group(function () {
             Route::get('/user-roles', [UserRoleController::class, 'index'])->name('admin.user_roles.index');
@@ -125,70 +127,65 @@ Route::middleware('auth')->group(function () {
     });
 
 
-    Route::get('receipts-export', [ReceiptController::class, 'exportCsv'])->name('receipts.export');
-    // Only the actions you have implemented
-    Route::resource('receipts', ReceiptController::class)->only(['index', 'create', 'store']);
-    Route::get('sanghs-export', [SanghController::class, 'exportExcel'])->name('sanghs.export');
-    Route::post('sanghs-import', [SanghController::class, 'importExcel'])->name('sanghs.import');
-    Route::get('sanghs-template', [SanghController::class, 'downloadTemplate'])->name('sanghs.template');
-    Route::post('sanghs-seed-placeholders', [SanghController::class, 'seedPlaceholders'])->name('sanghs.seed_placeholders');
+    Route::get('receipts-export', [ReceiptController::class, 'exportCsv'])->name('receipts.export')->middleware('permission:receipts.view');
+    Route::get('sanghs-export', [SanghController::class, 'exportExcel'])->name('sanghs.export')->middleware('permission:sanghs.view');
+    Route::post('sanghs-import', [SanghController::class, 'importExcel'])->name('sanghs.import')->middleware('permission:sanghs.create');
+    Route::get('sanghs-template', [SanghController::class, 'downloadTemplate'])->name('sanghs.template')->middleware('permission:sanghs.create');
+    Route::post('sanghs-seed-placeholders', [SanghController::class, 'seedPlaceholders'])->name('sanghs.seed_placeholders')->middleware('superadmin');
     Route::post('/sanghs/{sangh}/registration-receipt', [SanghController::class, 'updateRegistrationReceipt'])->name('sanghs.registration_receipt.update')->middleware('permission:sanghs.edit');
     Route::post('/sanghs/{sangh}/renewals/create-year', [SanghController::class, 'createRenewal'])->name('sanghs.renewals.create')->middleware('permission:sanghs.edit');
     Route::delete('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'destroyRenewal'])->name('sanghs.renewals.destroy')->middleware('permission:sanghs.delete');
     Route::post('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'updateRenewal'])->name('sanghs.renewals.update')->middleware('permission:sanghs.edit');
-    Route::get('/sanghs/{sangh}/receipt/{year}/pdf', [SanghController::class, 'downloadReceiptPdf'])->name('sanghs.receipt.pdf');
-    Route::get('/sanghs/{sangh}/pdf', [SanghController::class, 'downloadPdf'])->name('sanghs.pdf');         // generate & stream download
-    Route::get('/sanghs/{sangh}/save-pdf', [SanghController::class, 'savePdfToStorage'])->name('sanghs.save_pdf'); // save to storage & return link
-    Route::get('/sanghs/{sangh}/download-stored', [SanghController::class, 'downloadStoredPdf'])->name('sanghs.download_stored'); // download saved file
+    Route::get('/sanghs/{sangh}/receipt/{year}/pdf', [SanghController::class, 'downloadReceiptPdf'])->name('sanghs.receipt.pdf')->middleware('permission:sanghs.view');
+    Route::get('/sanghs/{sangh}/pdf', [SanghController::class, 'downloadPdf'])->name('sanghs.pdf')->middleware('permission:sanghs.view');         // generate & stream download
+    Route::get('/sanghs/{sangh}/save-pdf', [SanghController::class, 'savePdfToStorage'])->name('sanghs.save_pdf')->middleware('permission:sanghs.view'); // save to storage & return link
+    Route::get('/sanghs/{sangh}/download-stored', [SanghController::class, 'downloadStoredPdf'])->name('sanghs.download_stored')->middleware('permission:sanghs.view'); // download saved file
 
 
 
-    Route::get('groups/{group}/edit', [GroupController::class, 'edit'])->name('groups.edit');
-    Route::put('groups/{group}', [GroupController::class, 'update'])->name('groups.update');
-    Route::post('groups/{group}/users/{user}/admin', [GroupController::class, 'setAdmin'])->name('groups.users.admin');
+    Route::post('groups/{group}/users/{user}/admin', [GroupController::class, 'setAdmin'])->name('groups.users.admin')->middleware('permission:groups.edit');
 
     // Members
-    Route::post('groups/{group}/members', [GroupController::class, 'addMember'])->name('groups.members.add');
-    Route::delete('groups/{group}/members/{user}', [GroupController::class, 'removeMember'])->name('groups.members.remove');
-    Route::delete('/groups/{group}', [GroupController::class, 'destroy'])->name('groups.destroy');
-    Route::post('/groups/reorder', [GroupController::class, 'reorder'])->name('groups.reorder');
-    Route::post('/folders/reorder', [FolderController::class, 'reorder'])->name('folders.reorder');
+    Route::post('groups/{group}/members', [GroupController::class, 'addMember'])->name('groups.members.add')->middleware('permission:groups.edit');
+    Route::delete('groups/{group}/members/{user}', [GroupController::class, 'removeMember'])->name('groups.members.remove')->middleware('permission:groups.edit');
+    Route::post('/groups/reorder', [GroupController::class, 'reorder'])->name('groups.reorder')->middleware('permission:groups.edit');
+    Route::post('/folders/reorder', [FolderController::class, 'reorder'])->name('folders.reorder')->middleware('permission:folders.edit');
 
     // CSV export
-    Route::get('groups-export', [GroupController::class, 'exportCsv'])->name('groups.export');
+    Route::get('groups-export', [GroupController::class, 'exportCsv'])->name('groups.export')->middleware('permission:groups.view');
 
     // Tab management (dynamic)
-    Route::post('groups/{group}/tabs', [ChatController::class, 'storeTab'])->name('groups.tabs.store');
-    Route::post('groups/{group}/tabs/reorder', [ChatController::class, 'reorderTabs'])->name('groups.tabs.reorder');
-    Route::put('groups/{group}/tabs/{chat}', [ChatController::class, 'updateTab'])->name('groups.tabs.update');
-    Route::delete('groups/{group}/tabs/{chat}', [ChatController::class, 'destroyTab'])->name('groups.tabs.destroy');
+    Route::post('groups/{group}/tabs', [ChatController::class, 'storeTab'])->name('groups.tabs.store')->middleware('permission:chats.create');
+    Route::post('groups/{group}/tabs/reorder', [ChatController::class, 'reorderTabs'])->name('groups.tabs.reorder')->middleware('permission:chats.edit');
+    Route::put('groups/{group}/tabs/{chat}', [ChatController::class, 'updateTab'])->name('groups.tabs.update')->middleware('permission:chats.edit');
+    Route::delete('groups/{group}/tabs/{chat}', [ChatController::class, 'destroyTab'])->name('groups.tabs.destroy')->middleware('permission:chats.delete');
 
     // Chat (by chat id)
-    Route::get('groups/{group}/chat/{chat}', [ChatController::class, 'show'])->name('groups.chat.show');
-    Route::post('groups/{group}/chat/{chat}/message', [ChatController::class, 'storeMessage'])->name('groups.chat.message');
-    Route::post('groups/{group}/chat/{chat}/pin/{message}', [ChatController::class, 'pin'])->name('groups.chat.pin');
-    Route::post('groups/{group}/chat/{chat}/unpin', [ChatController::class, 'unpin'])->name('groups.chat.unpin');
+    Route::get('groups/{group}/chat/{chat}', [ChatController::class, 'show'])->name('groups.chat.show')->middleware('permission:chats.view');
+    Route::post('groups/{group}/chat/{chat}/message', [ChatController::class, 'storeMessage'])->name('groups.chat.message')->middleware('permission:chats.create');
+    Route::post('groups/{group}/chat/{chat}/pin/{message}', [ChatController::class, 'pin'])->name('groups.chat.pin')->middleware('permission:chats.edit');
+    Route::post('groups/{group}/chat/{chat}/unpin', [ChatController::class, 'unpin'])->name('groups.chat.unpin')->middleware('permission:chats.edit');
 
     // Poll endpoint
-    Route::get('groups/{group}/chat/{chat}/poll', [ChatController::class, 'poll'])->name('groups.chat.poll');
+    Route::get('groups/{group}/chat/{chat}/poll', [ChatController::class, 'poll'])->name('groups.chat.poll')->middleware('permission:chats.view');
     Route::get('/chats/{chat}/edit', [ChatController::class, 'edit'])->name('chats.edit');
     Route::get(
         '/groups/{group}/chats/{chat}/messages/{message}/edit',
         [ChatController::class, 'editMessage']
-    )->name('chat.message.edit');
+    )->name('chat.message.edit')->middleware('permission:chats.view');
 
     Route::put(
         '/groups/{group}/chats/{chat}/messages/{message}',
         [ChatController::class, 'updateMessage']
-    )->name('chat.message.update');
+    )->name('chat.message.update')->middleware('permission:chats.view');
 
     Route::delete(
         '/groups/{group}/chats/{chat}/messages/{message}',
         [ChatController::class, 'destroyMessage']
-    )->name('chat.message.destroy');
+    )->name('chat.message.destroy')->middleware('permission:chats.view');
 
 
 
-    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index'); // JSON for header bell
-    Route::get('/search', [SearchController::class, 'index'])->name('search.index');
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index')->middleware('permission:notifications.view'); // JSON for header bell
+    Route::get('/search', [SearchController::class, 'index'])->name('search.index')->middleware('permission:search.view');
 });

@@ -43,7 +43,10 @@ class SanghFeeSlab extends Model
             ->where(function ($q) use ($totalMembers) {
                 $q->whereNull('max_members')->orWhere('max_members', '>=', $totalMembers);
             })
-            ->orderBy('min_members')
+            // Prefer the most specific (highest min_members) matching slab, so a
+            // newly-added narrower tier above an older unbounded catch-all slab
+            // actually takes effect instead of being permanently shadowed by it.
+            ->orderByDesc('min_members')
             ->first();
 
         return $slab ? (float) $slab->annual_fee : null;

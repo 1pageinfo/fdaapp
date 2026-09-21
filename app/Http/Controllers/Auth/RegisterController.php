@@ -39,6 +39,7 @@ class RegisterController extends Controller
         }
 
         auth()->login($user);
+        $request->session()->regenerate();
 
         return redirect()->route('dashboard')->with('success', 'Welcome! You are registered.');
     }

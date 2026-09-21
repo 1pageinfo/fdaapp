@@ -22,18 +22,20 @@
         <button type="button" class="btn btn-sm btn-primary" data-toggle="modal" data-target="#addTabModal">
           <i class="ti-plus mr-1"></i> New Tab
         </button>
-        &nbsp; <a href="{{ route('groups.edit', $group) }}" class="btn btn-sm btn-outline-primary">
-          <i class="ti-pencil mr-1"></i> Edit 
-        </a>
-         &nbsp; <form action="{{ route('groups.destroy', $group) }}" method="POST"
-          onsubmit="return confirm('Are you sure? This will delete the group and all chats/messages.');">
-          @csrf
-          @method('DELETE')
+        @if($canManageGroup)
+          &nbsp; <a href="{{ route('groups.edit', $group) }}" class="btn btn-sm btn-outline-primary">
+            <i class="ti-pencil mr-1"></i> Edit
+          </a>
+           &nbsp; <form action="{{ route('groups.destroy', $group) }}" method="POST" class="d-inline"
+            onsubmit="return confirm('Are you sure? This will delete the group and all chats/messages.');">
+            @csrf
+            @method('DELETE')
 
-          <button class="btn btn-danger btn-sm">
-            <i class="ti-trash"></i>
-          </button>
-        </form>
+            <button class="btn btn-danger btn-sm">
+              <i class="ti-trash"></i>
+            </button>
+          </form>
+        @endif
       </div>
     </div>
 

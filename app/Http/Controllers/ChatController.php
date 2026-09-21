@@ -12,9 +12,10 @@ use Illuminate\Support\Facades\Auth;
 class ChatController extends Controller
 {
     // Show a tab (by chat id)
-    public function show(\App\Models\Group $group, \App\Models\Chat $chat)
+    public function show(Request $request, \App\Models\Group $group, \App\Models\Chat $chat)
     {
         abort_unless($chat->group_id === $group->id, 404);
+        abort_unless($group->isVisibleTo($request->user()), 403);
 
         $group->load('chats');
 
@@ -35,6 +36,7 @@ class ChatController extends Controller
     public function poll(\App\Models\Group $group, \App\Models\Chat $chat, Request $request)
     {
         abort_unless($chat->group_id === $group->id, 404);
+        abort_unless($group->isVisibleTo($request->user()), 403);
 
         $q = \App\Models\ChatMessage::with(['user', 'file'])
             ->where('chat_id', $chat->id);
@@ -68,6 +70,7 @@ class ChatController extends Controller
     public function storeMessage(Request $request, \App\Models\Group $group, \App\Models\Chat $chat)
     {
         abort_unless($chat->group_id === $group->id, 404);
+        abort_unless($group->isVisibleTo($request->user()), 403);
 
         $validated = $request->validate([
             'body' => 'nullable|string|max:5000',
@@ -107,6 +110,8 @@ class ChatController extends Controller
 
     public function storeTab(Request $request, \App\Models\Group $group)
     {
+        abort_unless($group->isVisibleTo($request->user()), 403);
+
         $data = $request->validate([
             'tab' => "required|string|max:255"
         ]);
@@ -131,6 +136,7 @@ class ChatController extends Controller
     public function updateTab(Request $request, \App\Models\Group $group, \App\Models\Chat $chat)
     {
         abort_unless($chat->group_id === $group->id, 404);
+        abort_unless($group->isModeratedBy($request->user()), 403);
 
         $data = $request->validate([
             'tab' => "required|string|max:255"
@@ -149,15 +155,19 @@ class ChatController extends Controller
         return back()->with('success', 'Tab renamed.');
     }
 
-    public function destroyTab(\App\Models\Group $group, \App\Models\Chat $chat)
+    public function destroyTab(Request $request, \App\Models\Group $group, \App\Models\Chat $chat)
     {
         abort_unless($chat->group_id === $group->id, 404);
+        abort_unless($group->isModeratedBy($request->user()), 403);
+
         $chat->delete(); // messages cascade (FK) if set; otherwise, delete messages first
         return back()->with('success', 'Tab deleted.');
     }
 
     public function reorderTabs(Request $request, \App\Models\Group $group)
     {
+        abort_unless($group->isModeratedBy($request->user()), 403);
+
         $data = $request->validate([
             'order' => ['required', 'array', 'min:1'],
             'order.*' => ['required', 'integer', 'distinct'],
@@ -175,18 +185,21 @@ class ChatController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    public function pin(\App\Models\Group $group, \App\Models\Chat $chat, \App\Models\ChatMessage $message)
+    public function pin(Request $request, \App\Models\Group $group, \App\Models\Chat $chat, \App\Models\ChatMessage $message)
     {
         abort_unless($chat->group_id === $group->id, 404);
         abort_unless($message->chat_id === $chat->id, 403);
+        abort_unless($group->isModeratedBy($request->user()), 403);
 
         $chat->update(['pinned_message_id' => $message->id]);
         return back()->with('success', 'Pinned message updated.');
     }
 
-    public function unpin(\App\Models\Group $group, \App\Models\Chat $chat)
+    public function unpin(Request $request, \App\Models\Group $group, \App\Models\Chat $chat)
     {
         abort_unless($chat->group_id === $group->id, 404);
+        abort_unless($group->isModeratedBy($request->user()), 403);
+
         $chat->update(['pinned_message_id' => null]);
         return back()->with('success', 'Unpinned.');
     }
@@ -197,10 +210,12 @@ class ChatController extends Controller
     }
 
     // Show edit form for a message
-    public function editMessage(Group $group, Chat $chat, ChatMessage $message)
+    public function editMessage(Request $request, Group $group, Chat $chat, ChatMessage $message)
     {
         abort_unless($chat->group_id === $group->id, 404);
         abort_unless($message->chat_id === $chat->id, 404);
+        abort_unless($group->isVisibleTo($request->user()), 403);
+        abort_unless($message->user_id === $request->user()->id || $group->isModeratedBy($request->user()), 403);
 
         return view('chats.edit-message', compact('group', 'chat', 'message'));
     }
@@ -210,6 +225,7 @@ class ChatController extends Controller
     {
         abort_unless($chat->group_id === $group->id, 404);
         abort_unless($message->chat_id === $chat->id, 404);
+        abort_unless($message->user_id === $request->user()->id || $group->isModeratedBy($request->user()), 403);
 
         $request->validate([
             'body' => 'required|string|max:10000'
@@ -223,18 +239,12 @@ class ChatController extends Controller
     }
 
     // Delete message
-    public function destroyMessage(Group $group, Chat $chat, ChatMessage $message)
+    public function destroyMessage(Request $request, Group $group, Chat $chat, ChatMessage $message)
     {
         abort_unless($chat->group_id === $group->id, 404);
         abort_unless($message->chat_id === $chat->id, 404);
 
-        // Check owner or admin (optional - remove if not needed)
-        $isAdmin = $group->users()
-            ->where('user_id', auth()->id())
-            ->where('is_admin', 1)
-            ->exists();
-
-        if ($message->user_id !== auth()->id() && !$isAdmin) {
+        if ($message->user_id !== auth()->id() && !$group->isModeratedBy($request->user())) {
             abort(403, "You cannot delete this message.");
         }
 
@@ -242,7 +252,4 @@ class ChatController extends Controller
 
         return back()->with('success', 'Message deleted successfully.');
     }
-
-
-
 }

@@ -31,4 +31,9 @@ class Receipt extends Model
     {
         return $this->belongsTo(User::class)->withTrashed();
     }
+
+    public function isVisibleTo(User $user): bool
+    {
+        return $user->hasRole('superadmin') || $this->user_id === $user->id;
+    }
 }

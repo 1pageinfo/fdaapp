@@ -3,46 +3,46 @@
 namespace App\Http\Controllers;
 
 use App\Models\Receipt;
-use App\Models\Group;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReceiptController extends Controller
 {
+    protected function scopeVisible($query, Request $request)
+    {
+        if (! $request->user()->hasRole('superadmin')) {
+            $query->where('user_id', $request->user()->id);
+        }
+
+        return $query;
+    }
+
     public function index(Request $request)
     {
         $query = Receipt::with('user');
+        $this->scopeVisible($query, $request);
 
         // Date filter
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $query->whereBetween('created_at', [$request->start_date, $request->end_date]);
         }
 
-        // Group filter (if receipts belong to groups)
-        if ($request->filled('group_id')) {
-            $query->where('group_id', $request->group_id);
-        }
-
         $receipts = $query->latest()->paginate(10);
-        $groups = Group::all();
 
-        return view('receipts.index', compact('receipts', 'groups'));
+        return view('receipts.index', compact('receipts'));
     }
 
-public function create()
+    public function create()
     {
-        // $groups = Group::all(); // if you need a group dropdown
-        return view('receipts.create'/*, compact('groups')*/);
+        return view('receipts.create');
     }
 
-
- public function store(Request $request)
+    public function store(Request $request)
     {
         $request->validate([
             'subject' => 'required|string|max:255',
-            'amount'  => 'required|numeric',
+            'amount'  => 'required|numeric|min:0',
             'file'    => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
-            // 'group_id' => 'nullable|exists:groups,id', // only if you added group_id
         ]);
 
         $path = null;
@@ -55,23 +55,20 @@ public function create()
             'amount'    => $request->amount,
             'file_path' => $path,
             'user_id'   => auth()->id(),
-            // 'group_id'  => $request->group_id, // only if you added group_id
         ]);
 
         return redirect()->route('receipts.index')->with('success', 'Receipt added successfully.');
     }
+
     public function exportCsv(Request $request): StreamedResponse
     {
         $fileName = "receipts_" . now()->format('Ymd_His') . ".csv";
         $query = Receipt::with('user');
+        $this->scopeVisible($query, $request);
 
         // Apply same filters for export
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $query->whereBetween('created_at', [$request->start_date, $request->end_date]);
-        }
-
-        if ($request->filled('group_id')) {
-            $query->where('group_id', $request->group_id);
         }
 
         $receipts = $query->get();
@@ -84,7 +81,7 @@ public function create()
             "Expires" => "0"
         ];
 
-        $columns = ['ID', 'Subject', 'Amount', 'User', 'Group', 'File Path', 'Created At'];
+        $columns = ['ID', 'Subject', 'Amount', 'User', 'File Path', 'Created At'];
 
         $callback = function() use ($receipts, $columns) {
             $file = fopen('php://output', 'w');
@@ -96,7 +93,6 @@ public function create()
                     $receipt->subject,
                     $receipt->amount,
                     $receipt->user?->name,
-                    $receipt->group?->name ?? '-',   // ✅ show group name
                     $receipt->file_path,
                     $receipt->created_at,
                 ]);

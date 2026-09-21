@@ -54,5 +54,17 @@ class RolesAndPermissionsSeeder extends Seeder
         if ($superadmin) {
             $superadmin->permissions()->sync(Permission::pluck('id'));
         }
+
+        // Baseline permissions granted to every member by default — basic account-level
+        // navigation (dashboard, own profile, search, notifications), never the sensitive
+        // "core" org-data features (sanghs/receipts/groups/etc.), which stay per-user grants
+        // made by a superadmin via Settings. Without this, a brand-new signup is locked out
+        // of even seeing their own dashboard until someone manually grants permissions.
+        $member = Role::where('slug', 'member')->first();
+        if ($member) {
+            $baselineSlugs = ['dashboard.view', 'profile.view', 'profile.edit', 'search.view', 'notifications.view', 'contacts.view'];
+            $baselineIds = Permission::whereIn('slug', $baselineSlugs)->pluck('id');
+            $member->permissions()->syncWithoutDetaching($baselineIds);
+        }
     }
 }

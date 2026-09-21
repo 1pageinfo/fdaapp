@@ -59,10 +59,15 @@ class FileController extends Controller
         ]);
     }
 
+    private const ALLOWED_UPLOAD_EXTENSIONS = [
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt',
+        'jpg', 'jpeg', 'png', 'gif', 'mp4', 'zip',
+    ];
+
     public function store(Request $request)
     {
         $request->validate([
-           'file' => 'required|file|max:1048576',
+           'file' => 'required|file|max:1048576|mimes:' . implode(',', self::ALLOWED_UPLOAD_EXTENSIONS),
             'folder_id' => 'nullable|exists:folders,id',
         ]);
 
@@ -73,9 +78,19 @@ class FileController extends Controller
         // TEMP FILE PATH
         $tmpPath = $uploadedFile->getRealPath();
 
-        // FINAL STORAGE PATH
+        // FINAL STORAGE PATH — avoid silently overwriting an existing file of the
+        // same name (which would corrupt any other File row already pointing at it).
         $finalFileName = $uploadedFile->getClientOriginalName();
+        $namePart = pathinfo($finalFileName, PATHINFO_FILENAME);
+        $extPart = pathinfo($finalFileName, PATHINFO_EXTENSION);
         $finalPath = storage_path("app/public/$pathPrefix/" . $finalFileName);
+
+        $counter = 1;
+        while (file_exists($finalPath)) {
+            $finalFileName = $extPart !== '' ? "{$namePart} ({$counter}).{$extPart}" : "{$namePart} ({$counter})";
+            $finalPath = storage_path("app/public/$pathPrefix/" . $finalFileName);
+            $counter++;
+        }
 
         // Ensure directory
         @mkdir(dirname($finalPath), 0777, true);
@@ -102,7 +117,7 @@ class FileController extends Controller
 
         $file = File::create([
             'folder_id' => $request->folder_id,
-            'name' => $uploadedFile->getClientOriginalName(),
+            'name' => $finalFileName,
             'mime' => $uploadedFile->getClientMimeType(),
             'size_bytes' => filesize($finalPath),
             'path' => Storage::url($storedPath),
@@ -245,7 +260,14 @@ class FileController extends Controller
 
     private function compressImage($source, $destination, $quality = 70)
     {
-        $info = getimagesize($source);
+        $info = @getimagesize($source);
+
+        if ($info === false) {
+            // Not a decodable image (corrupt file, or mislabeled extension) — just copy as-is
+            // rather than crashing on array access below.
+            copy($source, $destination);
+            return;
+        }
 
         if ($info['mime'] == 'image/jpeg') {
             $image = imagecreatefromjpeg($source);

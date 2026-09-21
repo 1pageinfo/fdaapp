@@ -460,7 +460,10 @@ class SanghController extends Controller
         abort_unless($sangh->isManageableBy($request->user()), 403);
 
         $validated = $request->validate($this->rules(false));
-        $this->assertMinimumMembers($validated);
+        // Minimum-25-members is only enforced at initial registration (store()), not on
+        // every subsequent edit — federations often digitize records in stages (name/address
+        // captured first, headcount confirmed later), and placeholder/legacy rows shouldn't
+        // become permanently un-editable until that headcount is filled in.
 
         $selectedVibhag = $validated['pradeshik_vibhag'] ?? null;
         $selectedDistrict = $validated['district'] ?? null;
@@ -602,14 +605,21 @@ class SanghController extends Controller
                 $pradeshikVibhag = $mapped['प्रादेशिक विभाग'] ?? null;
                 $district = $mapped['जिल्हा'] ?? null;
 
-                $numbering = $this->makeNumbering(
+                // If the row carries a unique ref no that already exists, this is a
+                // re-import of a previously-exported (and possibly registered) sangh —
+                // update it in place rather than creating a duplicate, and never touch
+                // its already-issued official numbering.
+                $existingRefNo = trim((string) ($mapped['Unique संघाचा अनु क्र.'] ?? ''));
+                $existingSangh = $existingRefNo !== '' ? Sangh::where('unique_ref_no', $existingRefNo)->first() : null;
+
+                $numbering = $existingSangh ? [] : $this->makeNumbering(
                     $pradeshikVibhag,
                     $district,
                     $this->codeChar($mapped['श्रेणी'] ?? null),
                     $this->codeChar($mapped['संघ प्रकार'] ?? null)
                 );
 
-                $sangh = Sangh::create(array_merge([
+                $attributes = array_merge([
                     'name_of_sangh' => $name,
                     'registration_year' => $this->intOrNull($mapped['वर्ष'] ?? null),
                     'category_code' => $this->codeChar($mapped['श्रेणी'] ?? null),
@@ -638,9 +648,17 @@ class SanghController extends Controller
                     'secretary_phone' => $mapped['सचिव मोबाईल'] ?? null,
                     'secretary_whatsapp' => $mapped['सचिव व्हॉट्सअप'] ?? null,
                     'secretary_email' => $mapped['सचिव इमेल'] ?? null,
-                    'created_by' => Auth::id(),
-                    'created_date' => now(),
-                ], $numbering));
+                ], $numbering);
+
+                if ($existingSangh) {
+                    $existingSangh->update($attributes);
+                    $sangh = $existingSangh;
+                } else {
+                    $sangh = Sangh::create(array_merge($attributes, [
+                        'created_by' => Auth::id(),
+                        'created_date' => now(),
+                    ]));
+                }
 
                 $this->ensureRenewalsForSangh($sangh);
             }
@@ -719,8 +737,10 @@ class SanghController extends Controller
     }
 
 
-     public function downloadPdf(Sangh $sangh)
+     public function downloadPdf(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isVisibleTo($request->user()), 403);
+
         // load relations if needed
         $sangh->load('creator');
 
@@ -737,8 +757,10 @@ class SanghController extends Controller
      * Generate PDF and save to storage/app/public/sangh-pdfs/
      * Returns a redirect or JSON with the stored file path / URL.
      */
-    public function savePdfToStorage(Sangh $sangh)
+    public function savePdfToStorage(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isVisibleTo($request->user()), 403);
+
         $sangh->load('creator');
 
         $pdf = app('dompdf.wrapper')->loadView('sanghs.pdf', compact('sangh'))
@@ -763,8 +785,10 @@ class SanghController extends Controller
     /**
      * Download a previously saved PDF from storage
      */
-    public function downloadStoredPdf(Sangh $sangh)
+    public function downloadStoredPdf(Request $request, Sangh $sangh)
     {
+        abort_unless($sangh->isVisibleTo($request->user()), 403);
+
         $folder = 'sangh-pdfs';
         // find latest file for this sangh (simple approach)
         $files = Storage::disk('public')->files($folder);
@@ -788,8 +812,10 @@ class SanghController extends Controller
         return response()->download($absolutePath);
     }
 
-    public function downloadReceiptPdf(Sangh $sangh, int $year)
+    public function downloadReceiptPdf(Request $request, Sangh $sangh, int $year)
     {
+        abort_unless($sangh->isVisibleTo($request->user()), 403);
+
         $renewal = SanghRenewal::query()
             ->where('sangh_id', $sangh->id)
             ->where('renewal_year', $year)
@@ -963,7 +989,10 @@ class SanghController extends Controller
 
     private function rules(bool $isCreate = true): array
     {
-        $nameRule = $isCreate ? 'required|string|max:255|not_regex:/[0-9]/' : 'nullable|string|max:255|not_regex:/[0-9]/';
+        // Names may legitimately contain digits (society/building/chawl numbers, e.g.
+        // "सहकारी गृहनिर्माण संस्था क्र. ३") — the client-side "Marathi only" filter already
+        // allows 0-9, so the server-side rule matches that rather than rejecting them.
+        $nameRule = $isCreate ? 'required|string|max:255' : 'nullable|string|max:255';
 
         return [
             'assigned_to' => 'nullable|exists:users,id',
@@ -971,13 +1000,13 @@ class SanghController extends Controller
             'registration_year' => 'nullable|integer|min:1900|max:' . date('Y'),
             'category_code' => 'required|string|in:R,U,A',
             'sangh_type_code' => 'required|string|in:G,F',
-            'pradeshik_vibhag' => 'required|string|max:255|not_regex:/[0-9]/',
+            'pradeshik_vibhag' => 'required|string|max:255',
             'pradeshik_vibhag_code' => 'nullable|string|max:10',
-            'district' => 'required|string|max:255|not_regex:/[0-9]/',
+            'district' => 'required|string|max:255',
             'district_code' => 'nullable|string|max:10',
-            'taluka' => 'nullable|string|max:255|not_regex:/[0-9]/',
-            'village' => 'nullable|string|max:255|not_regex:/[0-9]/',
-            'city' => 'nullable|string|max:255|not_regex:/[0-9]/',
+            'taluka' => 'nullable|string|max:255',
+            'village' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:255',
             'mukkam_post' => 'nullable|string|max:255',
             'pincode' => ['nullable', 'digits:6', Rule::in(config('pincodes.allowed', []))],
             'address' => 'nullable|string',
@@ -989,13 +1018,13 @@ class SanghController extends Controller
             'pradeshik_admission_fee' => 'nullable|numeric|min:0',
             'pradeshik_annual_fee' => 'nullable|numeric|min:0',
             'pradeshik_development_fee' => 'nullable|numeric|min:0',
-            'president' => 'nullable|string|max:255|not_regex:/[0-9]/',
+            'president' => 'nullable|string|max:255',
             'president_phone' => 'nullable|digits:10',
             'president_whatsapp' => 'nullable|digits:10',
             'president_email' => 'nullable|email|max:255',
             'tel_no' => 'nullable|string|max:30',
             'alt_tel_no' => 'nullable|string|max:30',
-            'secretary' => 'nullable|string|max:255|not_regex:/[0-9]/',
+            'secretary' => 'nullable|string|max:255',
             'secretary_phone' => 'nullable|digits:10',
             'secretary_whatsapp' => 'nullable|digits:10',
             'secretary_email' => 'nullable|email|max:255',

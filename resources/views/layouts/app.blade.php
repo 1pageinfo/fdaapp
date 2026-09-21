@@ -6,7 +6,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{{ config('app.name', 'Laravel App') }}</title>
+  <title>{{ \App\Models\Setting::getValue('app_name', config('app.name', 'Laravel App')) }}</title>
   <!-- plugins:css -->
   <link rel="stylesheet" href="{{ asset('theme/vendors/feather/feather.css') }}">
   <link rel="stylesheet" href="{{ asset('theme/vendors/ti-icons/css/themify-icons.css') }}">
@@ -182,6 +182,15 @@
               data-perm="links.view">
               <i class="ti-link menu-icon"></i>
               <span class="menu-title">Links</span>
+            </a>
+          </li>
+
+          {{-- Contacts --}}
+          <li class="nav-item">
+            <a class="nav-link {{ request()->is('contacts*') ? 'active' : '' }}" href="{{ route('contacts.index') }}"
+              data-perm="contacts.view">
+              <i class="fa fa-address-book menu-icon"></i>
+              <span class="menu-title">Contacts</span>
             </a>
           </li>
 

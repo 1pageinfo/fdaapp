@@ -74,6 +74,11 @@ class FolderController extends Controller
         }
 
         $parentId = $validated['parent_id'] ?? null;
+        if ($parentId) {
+            $parent = Folder::find($parentId);
+            abort_unless($parent && $parent->isManageableBy($request->user()), 403);
+        }
+
         $maxSortOrder = Folder::where('parent_id', $parentId)->max('sort_order');
 
         Folder::create([
@@ -100,25 +105,41 @@ class FolderController extends Controller
     public function destroy(Request $request, Folder $folder)
     {
         abort_unless($folder->isManageableBy($request->user()), 403);
+        $this->assertSubtreeManageable($folder, $request->user());
 
-        // delete files in folder (and storage)
+        $this->deleteFolderRecursive($folder);
+
+        return redirect()->route('folders.index')->with('success', 'Folder deleted');
+    }
+
+    /**
+     * Refuse to delete a folder if any descendant isn't manageable by $user —
+     * otherwise the DB's parent_id nullOnDelete would silently "promote" that
+     * descendant to a new root folder instead of actually being removed.
+     */
+    protected function assertSubtreeManageable(Folder $folder, $user): void
+    {
+        foreach ($folder->subfolders as $sub) {
+            abort_unless($sub->isManageableBy($user), 403, 'This folder has a subfolder you cannot manage — ask an admin to remove it first.');
+            $this->assertSubtreeManageable($sub, $user);
+        }
+    }
+
+    protected function deleteFolderRecursive(Folder $folder): void
+    {
+        // delete files in folder (and their physical copies on the public disk)
         foreach ($folder->files as $file) {
-            if ($file->path && Storage::exists($file->path)) {
-                Storage::delete($file->path);
+            if ($file->disk_path && Storage::disk('public')->exists($file->disk_path)) {
+                Storage::disk('public')->delete($file->disk_path);
             }
             $file->delete();
         }
 
-        // delete subfolders recursively
         foreach ($folder->subfolders as $sub) {
-            if ($sub->isManageableBy($request->user())) {
-                $this->destroy($request, $sub); // recursive call (be careful with deep recursion)
-            }
+            $this->deleteFolderRecursive($sub);
         }
 
         $folder->delete();
-
-        return redirect()->route('folders.index')->with('success', 'Folder deleted');
     }
 
 
@@ -147,6 +168,11 @@ class FolderController extends Controller
             unset($validated['assigned_to']);
         }
 
+        if (! empty($validated['parent_id'])) {
+            $parent = Folder::find($validated['parent_id']);
+            abort_unless($parent && $parent->isManageableBy($request->user()), 403);
+        }
+
         $folder->update($validated);
 
         return redirect()->route('folders.show', $folder->id)->with('success', 'Folder updated successfully.');
@@ -158,6 +184,11 @@ class FolderController extends Controller
             'order' => ['required', 'array', 'min:1'],
             'order.*' => ['required', 'integer', 'distinct', 'exists:folders,id'],
         ]);
+
+        $folders = Folder::whereIn('id', $data['order'])->get()->keyBy('id');
+        foreach ($folders as $folder) {
+            abort_unless($folder->isManageableBy($request->user()), 403);
+        }
 
         foreach (array_values($data['order']) as $index => $folderId) {
             Folder::whereKey($folderId)->update(['sort_order' => $index + 1]);

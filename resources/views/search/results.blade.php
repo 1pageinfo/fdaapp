@@ -25,9 +25,9 @@
         <ul class="list-unstyled mb-3">
           @foreach($sanghs as $s)
             @php
-              $sanghName = $s->name ?? $s->sangh_name ?? $s->title ?? ($s->id ? 'Sangh #' . $s->id : '—');
+              $sanghName = $s->name_of_sangh ?? $s->name ?? $s->sangh_name ?? $s->title ?? ($s->id ? 'Sangh #' . $s->id : '—');
               $district = $s->district ?? $s->area ?? $s->location ?? null;
-              $pradesh = $s->pradeshik_vibhag_name ?? $s->division ?? $s->state ?? null;
+              $pradesh = $s->pradeshik_vibhag ?? $s->pradeshik_vibhag_name ?? $s->division ?? $s->state ?? null;
               $meta = collect([$district, $pradesh])->filter()->implode(', ');
               $created = isset($s->created_at) ? \Carbon\Carbon::parse($s->created_at)->format('Y-m-d') : null;
             @endphp

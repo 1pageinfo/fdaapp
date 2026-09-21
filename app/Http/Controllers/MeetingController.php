@@ -42,8 +42,10 @@ class MeetingController extends Controller
         // Convert to FullCalendar events (plain array)
         $events = $meetings->map(function ($m) {
             return [
+                'id'    => $m->id,
                 'title' => $m->title,
                 'start' => optional($m->start_at)->toDateTimeString(), // safe if null
+                'group' => $m->group?->name,
                 'url'   => route('meetings.show', $m->id),
             ];
         })->values()->toArray();

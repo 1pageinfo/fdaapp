@@ -65,6 +65,21 @@ class Group extends Model
             || $this->assigned_to === $user->id;
     }
 
+    /**
+     * Broader than isManageableBy(): also true for a pivot member promoted to
+     * group-admin (users.is_admin). Used for day-to-day moderation — member
+     * add/remove/promote, tab create/rename/delete, pin/unpin — as opposed to
+     * isManageableBy(), which gates the group record itself (edit/delete).
+     */
+    public function isModeratedBy(User $user): bool
+    {
+        if ($this->isManageableBy($user)) {
+            return true;
+        }
+
+        return $this->users()->where('users.id', $user->id)->wherePivot('is_admin', true)->exists();
+    }
+
     public function chats()
     {
         return $this->hasMany(Chat::class)

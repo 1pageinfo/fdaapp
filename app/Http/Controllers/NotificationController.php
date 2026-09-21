@@ -14,9 +14,25 @@ class NotificationController extends Controller
         $start = now()->addDay()->startOfDay();
         $end   = now()->addDay()->endOfDay();
 
-        $meetings = Meeting::with('group')
-            ->whereBetween('start_at', [$start, $end])
-            ->orderBy('start_at')
+        $query = Meeting::with('group')
+            ->whereBetween('start_at', [$start, $end]);
+
+        $user = $request->user();
+        if (! $user->hasRole('superadmin')) {
+            $userId = $user->id;
+            $groupIds = \App\Models\Group::where('created_by', $userId)
+                ->orWhere('assigned_to', $userId)
+                ->orWhereHas('users', fn ($q) => $q->where('users.id', $userId))
+                ->pluck('id');
+
+            $query->where(function ($q) use ($userId, $groupIds) {
+                $q->where('created_by', $userId)
+                    ->orWhere('assigned_to', $userId)
+                    ->orWhereIn('group_id', $groupIds);
+            });
+        }
+
+        $meetings = $query->orderBy('start_at')
             ->limit(10)
             ->get()
             ->map(function($m){

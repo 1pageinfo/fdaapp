@@ -73,18 +73,13 @@ class GroupController extends Controller
         ]);
         $allUsers = User::orderBy('name')->get(['id', 'name']);
         $canManageMembers = $this->canManageMembers($request, $group);
-        return view('groups.show', compact('group', 'allUsers', 'canManageMembers'));
+        $canManageGroup = $group->isManageableBy($request->user());
+        return view('groups.show', compact('group', 'allUsers', 'canManageMembers', 'canManageGroup'));
     }
 
     protected function canManageMembers(Request $request, Group $group): bool
     {
-        $user = $request->user();
-
-        if ($group->isManageableBy($user)) {
-            return true;
-        }
-
-        return $group->users()->where('users.id', $user->id)->wherePivot('is_admin', true)->exists();
+        return $group->isModeratedBy($request->user());
     }
 
     // Feature 8: Add Users to Group
@@ -200,9 +195,14 @@ class GroupController extends Controller
             'order.*' => ['required', 'integer', 'distinct', 'exists:groups,id'],
         ]);
 
-        $groupIds = Group::whereIn('id', $data['order'])->pluck('id')->all();
-        if (count($groupIds) !== count($data['order'])) {
+        $groups = Group::whereIn('id', $data['order'])->get()->keyBy('id');
+        if ($groups->count() !== count($data['order'])) {
             abort(422, 'Invalid group order payload.');
+        }
+
+        $user = $request->user();
+        foreach ($groups as $group) {
+            abort_unless($group->isManageableBy($user), 403);
         }
 
         foreach (array_values($data['order']) as $index => $groupId) {

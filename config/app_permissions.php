@@ -29,6 +29,7 @@ return [
             'icon' => 'ti-settings',
             'features' => [
                 'dashboard'     => ['label' => 'Dashboard',       'icon' => 'ti-dashboard',  'actions' => ['view']],
+                'contacts'      => ['label' => 'Contacts',        'icon' => 'ti-address-book', 'actions' => ['view']],
                 'profile'       => ['label' => 'Profile',         'icon' => 'ti-id-badge',   'actions' => ['view', 'edit']],
                 'settings'      => ['label' => 'Settings',        'icon' => 'ti-settings',   'actions' => ['view', 'edit']],
                 'sangh_fee'     => ['label' => 'Sangh Fee Slabs', 'icon' => 'ti-money',      'actions' => ['view', 'edit']],
