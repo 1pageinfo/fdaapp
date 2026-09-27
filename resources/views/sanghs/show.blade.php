@@ -291,9 +291,6 @@
                             <span class="d-none d-print-block">{{ number_format($newRegisterBalance, 0) }}</span>
                         </td>
                         <td class="text-nowrap no-print">
-                            <button type="button" class="btn btn-sm btn-info text-white mb-1" onclick="document.querySelector('select[form=\'newRegisterReceiptForm\'][name=\'status\']').value = 'information_approved'; document.getElementById('newRegisterReceiptForm').submit();">
-                                <i class="fa fa-check-circle"></i> Approve Info
-                            </button>
                             <button type="submit" class="btn btn-sm btn-success mb-1" form="newRegisterReceiptForm">
                                 <i class="fa fa-save"></i> Save
                             </button>
@@ -438,9 +435,6 @@
                                     <span class="d-none d-print-block">{{ number_format(($renewal->annual_fee ?? 0) + ($renewal->development_fee ?? 0) + ($renewal->penalty_fee ?? 0) - ($renewal->paid_amount ?? 0), 0) }}</span>
                                 </td>
                                 <td class="text-nowrap no-print">
-                                    <button type="button" class="btn btn-sm btn-info text-white mb-1" onclick="this.closest('form').querySelector('select[name=\'status\']').value = 'information_approved'; this.closest('form').submit();">
-                                        <i class="fa fa-check-circle"></i> Approve Info
-                                    </button>
                                     <button type="submit" class="btn btn-sm btn-success mb-1">
                                         <i class="fa fa-save"></i> Save
                                     </button>
