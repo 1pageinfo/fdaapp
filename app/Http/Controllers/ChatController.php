@@ -89,6 +89,7 @@ class ChatController extends Controller
                 'mime' => $uploaded->getClientMimeType(),
                 'size_bytes' => $uploaded->getSize(),
                 'path' => $path,
+                'disk_path' => $path,
                 'uploaded_by' => auth()->id(),
             ]);
             $fileId = $file->id;
