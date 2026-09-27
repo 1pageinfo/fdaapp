@@ -83,12 +83,12 @@ class FileController extends Controller
         $finalFileName = $uploadedFile->getClientOriginalName();
         $namePart = pathinfo($finalFileName, PATHINFO_FILENAME);
         $extPart = pathinfo($finalFileName, PATHINFO_EXTENSION);
-        $finalPath = storage_path("app/public/$pathPrefix/" . $finalFileName);
+        $finalPath = Storage::disk('public')->path("$pathPrefix/$finalFileName");
 
         $counter = 1;
         while (file_exists($finalPath)) {
             $finalFileName = $extPart !== '' ? "{$namePart} ({$counter}).{$extPart}" : "{$namePart} ({$counter})";
-            $finalPath = storage_path("app/public/$pathPrefix/" . $finalFileName);
+            $finalPath = Storage::disk('public')->path("$pathPrefix/$finalFileName");
             $counter++;
         }
 
