@@ -290,22 +290,11 @@ class FileController extends Controller
 
     private function compressExcel($source, $destination)
     {
-        // XLSX is a zip → recompress it
-        $zip = new ZipArchive;
-
-        if ($zip->open($source) === TRUE) {
-
-            $zip->close(); // closes before re-compressing
-
-            $zip2 = new ZipArchive;
-            if ($zip2->open($destination, ZipArchive::CREATE | ZipArchive::OVERWRITE)) {
-
-                $zip2->addFile($source, basename($source));
-                $zip2->close();
-            }
-        } else {
-            copy($source, $destination);
-        }
+        // XLSX/XLS are already compressed (zip-based) formats — wrapping the file
+        // as an entry inside another zip doesn't compress it, it corrupts it (the
+        // result is a zip containing the real spreadsheet, not the spreadsheet
+        // itself, so Excel can't open it). Just copy the file as-is.
+        copy($source, $destination);
     }
 
     private function buildPathPrefix($folderId = null): string
