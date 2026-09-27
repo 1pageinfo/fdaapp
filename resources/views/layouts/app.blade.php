@@ -94,7 +94,7 @@
           <li class="nav-item nav-profile dropdown">
             <a class="nav-link dropdown-toggle" href="#" data-toggle="dropdown" id="profileDropdown">
               <img
-                src="{{ auth()->user()->photo_path ? asset('storage/' . auth()->user()->photo_path) : asset('theme/images/default-avatar.png') }}"
+                src="{{ auth()->user()->photo_path ? route('media.show', ['path' => auth()->user()->photo_path]) : asset('theme/images/default-avatar.png') }}"
                 alt="profile" class="rounded-circle" style="object-fit: cover; width:32px; height:32px;">
             </a>
             <div class="dropdown-menu dropdown-menu-right navbar-dropdown" aria-labelledby="profileDropdown">

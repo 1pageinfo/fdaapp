@@ -72,7 +72,7 @@
 
                         <div class="mb-3 text-center">
                             @php
-                                $photoUrl = $user->photo_path ? asset('storage/'.$user->photo_path) : 'theme/images/default-avatar.png';
+                                $photoUrl = $user->photo_path ? route('media.show', ['path' => $user->photo_path]) : 'theme/images/default-avatar.png';
                             @endphp
                             <img id="preview" src="{{ $photoUrl }}" alt="Profile photo"
                                  class="rounded-circle border" style="width:160px;height:160px;object-fit:cover;">

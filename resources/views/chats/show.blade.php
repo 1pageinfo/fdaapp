@@ -292,7 +292,7 @@
         <div class="me-3 small">
           <strong>📌 Pinned:</strong>
           @if($pinned->file)
-            <a href="{{ $pinned->file->path }}">{{ $pinned->file->name }}</a>
+            <a href="{{ route('media.show', ['path' => $pinned->file->disk_path]) }}">{{ $pinned->file->name }}</a>
             @if($pinned->body) — {{ $pinned->body }} @endif
           @else
             {{ $pinned->body }}
@@ -330,7 +330,7 @@
             @endif
             @if($m->file)
               <div class="file-chip">📎 <a class="{{ $isMine ? 'text-dark' : '' }}"
-                  href="{{ $m->file->path }}">{{ $m->file->name }}</a></div>
+                  href="{{ route('media.show', ['path' => $m->file->disk_path]) }}">{{ $m->file->name }}</a></div>
             @endif
             <hr>
             <div class="mt-2">

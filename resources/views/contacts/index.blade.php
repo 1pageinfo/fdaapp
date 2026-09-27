@@ -31,7 +31,7 @@
                 <div class="card shadow-sm h-100 border-0 contact-card">
                     <div class="card-body d-flex flex-column align-items-center text-center">
                         @if($contact->photo_path)
-                            <img src="{{ asset('storage/' . $contact->photo_path) }}" alt="{{ $contact->name }}"
+                            <img src="{{ route('media.show', ['path' => $contact->photo_path]) }}" alt="{{ $contact->name }}"
                                  class="contact-photo mb-2">
                         @else
                             <div class="avatar {{ $color }} text-white mb-2">{{ $initial }}</div>

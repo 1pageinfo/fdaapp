@@ -22,6 +22,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\SanghFeeSettingController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\MediaController;
 
 // Redirect root → dashboard
 Route::get('/', fn() => redirect()->route('dashboard'));
@@ -58,6 +59,10 @@ Route::middleware('auth')->group(function () {
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard')->middleware('permission:dashboard.view');
+
+    // Serves files from the "public" disk through the app (see MediaController)
+    // instead of depending on the web server to serve public/storage statically.
+    Route::get('/media/{path}', [MediaController::class, 'show'])->where('path', '.*')->name('media.show');
 
     // Resources
     Route::resource('groups', GroupController::class)

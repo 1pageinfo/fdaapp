@@ -55,7 +55,7 @@ class ChatController extends Controller
                     'id' => $m->id,
                     'user' => $m->user?->name ?? 'User',
                     'body' => $m->body,
-                    'file_url' => $m->file ? asset('storage/' . $m->file->path) : null,
+                    'file_url' => $m->file ? route('media.show', ['path' => $m->file->disk_path]) : null,
                     'file_name' => $m->file?->name,
                     'created_at' => $m->created_at->toDateTimeString(),
                 ];

@@ -40,7 +40,10 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => public_path('storage'),
-            'url' => env('APP_URL').'/storage',
+            // Served through the app (see routes/web.php "media.show" + MediaController)
+            // rather than as a static /storage asset — some hosts never make files
+            // written after the initial deploy reachable as static files.
+            'url' => env('APP_URL').'/media',
             'visibility' => 'public',
             'throw' => false,
         ],

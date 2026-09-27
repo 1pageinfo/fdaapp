@@ -56,9 +56,7 @@
           @foreach($files as $f)
             @php
               $fileName = $f->name ?? $f->title ?? ('File #' . $f->id);
-              // If path looks like a full URL, use it; otherwise, try Storage::url on disk_path or path
-              $fileUrl = $f->path && (Str::startsWith($f->path, ['http://','https://'])) ? $f->path
-                        : ($f->path ? \Illuminate\Support\Facades\Storage::url($f->path) : ($f->disk_path ? \Illuminate\Support\Facades\Storage::url($f->disk_path) : '#'));
+              $fileUrl = $f->disk_path ? route('media.show', ['path' => $f->disk_path]) : ($f->path ?: '#');
               $createdFile = isset($f->created_at) ? \Carbon\Carbon::parse($f->created_at)->format('Y-m-d') : null;
             @endphp
 
