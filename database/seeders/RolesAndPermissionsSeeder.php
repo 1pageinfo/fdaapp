@@ -11,12 +11,13 @@ class RolesAndPermissionsSeeder extends Seeder
     public function run(): void
     {
         // Roles
-        $validRoles = ['superadmin', 'member'];
+        // moderator: like member, starts blank — features are granted per user in Settings.
+        $validRoles = ['superadmin', 'member', 'moderator'];
         foreach ($validRoles as $role) {
             Role::firstOrCreate(['slug' => $role]);
         }
 
-        // Remove any role outside the valid set (e.g. legacy admin/moderator).
+        // Remove any role outside the valid set (e.g. legacy admin).
         // role_user/permission_role pivot rows cascade-delete automatically.
         $obsoleteRoles = Role::whereNotIn('slug', $validRoles)->get();
         foreach ($obsoleteRoles as $role) {
@@ -60,11 +61,11 @@ class RolesAndPermissionsSeeder extends Seeder
         // "core" org-data features (sanghs/receipts/groups/etc.), which stay per-user grants
         // made by a superadmin via Settings. Without this, a brand-new signup is locked out
         // of even seeing their own dashboard until someone manually grants permissions.
-        $member = Role::where('slug', 'member')->first();
-        if ($member) {
-            $baselineSlugs = ['dashboard.view', 'profile.view', 'profile.edit', 'search.view', 'notifications.view', 'contacts.view'];
-            $baselineIds = Permission::whereIn('slug', $baselineSlugs)->pluck('id');
-            $member->permissions()->syncWithoutDetaching($baselineIds);
+        // Member and Moderator both start "blank" with only these basics; audit.view = own activity.
+        $baselineSlugs = ['dashboard.view', 'profile.view', 'profile.edit', 'search.view', 'notifications.view', 'contacts.view', 'audit.view'];
+        $baselineIds = Permission::whereIn('slug', $baselineSlugs)->pluck('id');
+        foreach (Role::whereIn('slug', ['member', 'moderator'])->get() as $role) {
+            $role->permissions()->syncWithoutDetaching($baselineIds);
         }
     }
 }

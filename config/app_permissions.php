@@ -7,6 +7,10 @@
 // Each feature's "actions" list should only include actions that a real
 // route/controller method exists for — don't add "edit"/"delete" to a
 // feature that has no edit/delete route.
+//
+// always_on:       every signed-in user has it (Dashboard, Contacts, own Activity Logs, …);
+//                  not shown in Settings → User Permissions.
+// superadmin_only: never grantable — only the superadmin role (Settings, Sangh Fees).
 
 return [
     'categories' => [
@@ -28,14 +32,14 @@ return [
             'label' => 'Account & System',
             'icon' => 'ti-settings',
             'features' => [
-                'dashboard'     => ['label' => 'Dashboard',       'icon' => 'ti-dashboard',  'actions' => ['view']],
-                'contacts'      => ['label' => 'Contacts',        'icon' => 'fa fa-address-book', 'actions' => ['view']],
-                'profile'       => ['label' => 'Profile',         'icon' => 'ti-id-badge',   'actions' => ['view', 'edit']],
-                'settings'      => ['label' => 'Settings',        'icon' => 'ti-settings',   'actions' => ['view', 'edit']],
-                'sangh_fee'     => ['label' => 'Sangh Fee Slabs', 'icon' => 'ti-money',      'actions' => ['view', 'edit']],
-                'search'        => ['label' => 'Search',          'icon' => 'ti-search',     'actions' => ['view']],
-                'notifications' => ['label' => 'Notifications',   'icon' => 'ti-bell',       'actions' => ['view']],
-                'audit'         => ['label' => 'Activity Logs',   'icon' => 'ti-list',       'actions' => ['view']],
+                'dashboard'     => ['always_on' => true, 'label' => 'Dashboard',       'icon' => 'ti-dashboard',  'actions' => ['view']],
+                'contacts'      => ['always_on' => true, 'label' => 'Contacts',        'icon' => 'fa fa-address-book', 'actions' => ['view']],
+                'profile'       => ['always_on' => true, 'label' => 'Profile',         'icon' => 'ti-id-badge',   'actions' => ['view', 'edit']],
+                'settings'      => ['superadmin_only' => true, 'label' => 'Settings',        'icon' => 'ti-settings',   'actions' => ['view', 'edit']],
+                'sangh_fee'     => ['superadmin_only' => true, 'label' => 'Sangh Fee Slabs', 'icon' => 'ti-money',      'actions' => ['view', 'edit']],
+                'search'        => ['always_on' => true, 'label' => 'Search',          'icon' => 'ti-search',     'actions' => ['view']],
+                'notifications' => ['always_on' => true, 'label' => 'Notifications',   'icon' => 'ti-bell',       'actions' => ['view']],
+                'audit'         => ['always_on' => true, 'label' => 'Activity Logs',   'icon' => 'ti-list',       'actions' => ['view']],
             ],
         ],
     ],

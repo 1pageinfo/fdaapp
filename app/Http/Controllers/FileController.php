@@ -70,6 +70,7 @@ class FileController extends Controller
            'file' => 'required|file|max:1048576|mimes:' . implode(',', self::ALLOWED_UPLOAD_EXTENSIONS),
             'folder_id' => 'nullable|exists:folders,id',
         ]);
+        $this->authorizeFolder($request, $request->folder_id);
 
         $uploadedFile = $request->file('file');
 
@@ -140,6 +141,7 @@ class FileController extends Controller
             'note_name' => 'required|string|max:150',
             'note_content' => 'nullable|string|max:65535',
         ]);
+        $this->authorizeFolder($request, $request->folder_id);
 
         $pathPrefix = $this->buildPathPrefix($request->folder_id);
 
@@ -194,7 +196,7 @@ class FileController extends Controller
     // Show edit form
     public function edit(Request $request, File $file)
     {
-        abort_unless($file->isVisibleTo($request->user()), 403);
+        abort_unless($file->isManageableBy($request->user()), 403);
 
         $folders = $request->user()->hasRole('superadmin')
             ? Folder::all()
@@ -205,13 +207,19 @@ class FileController extends Controller
     // Update metadata or replace file if needed
     public function update(Request $request, File $file)
     {
-        abort_unless($file->isVisibleTo($request->user()), 403);
+        // Only the uploader or someone who manages the folder may change a file.
+        abort_unless($file->isManageableBy($request->user()), 403);
 
         $request->validate([
             'name' => 'nullable|string|max:255',
             'folder_id' => 'nullable|exists:folders,id',
-            'file' => 'nullable|file|max:1048576',
+            // Same allowed types as a new upload — never scripts or unknown formats.
+            'file' => 'nullable|file|max:1048576|mimes:' . implode(',', self::ALLOWED_UPLOAD_EXTENSIONS),
         ]);
+        // Moving a file: only into a folder this user can see.
+        if ($request->filled('folder_id') && (int) $request->folder_id !== (int) $file->folder_id) {
+            $this->authorizeFolder($request, $request->folder_id);
+        }
 
         // if new file uploaded, remove old and store new
         if ($request->hasFile('file')) {
@@ -222,8 +230,8 @@ class FileController extends Controller
                 Storage::disk('public')->delete($file->disk_path);
             }
 
-            // store new file
-            $storedPath = $uploadedFile->storeAs('uploads', $uploadedFile->getClientOriginalName(), 'public');
+            // store new file under a unique name (never overwrite someone else's file)
+            $storedPath = $uploadedFile->store('uploads', 'public');
 
             $file->update([
                 'disk_path' => $storedPath,
@@ -246,7 +254,7 @@ class FileController extends Controller
 
     public function destroy(Request $request, File $file)
     {
-        abort_unless($file->isVisibleTo($request->user()), 403);
+        abort_unless($file->isManageableBy($request->user()), 403);
 
         // delete physical file first
         if ($file->disk_path && Storage::disk('public')->exists($file->disk_path)) {
@@ -256,6 +264,16 @@ class FileController extends Controller
         $file->delete();
 
         return redirect()->back()->with('success', 'File deleted');
+    }
+
+    /** Uploading into / moving into a folder requires being able to see that folder. */
+    private function authorizeFolder(Request $request, mixed $folderId): void
+    {
+        if (! $folderId || $request->user()->hasRole('superadmin')) {
+            return;
+        }
+        $folder = Folder::find($folderId);
+        abort_unless($folder && $folder->isVisibleTo($request->user()), 403, 'You cannot add files to this folder.');
     }
 
     private function compressImage($source, $destination, $quality = 70)

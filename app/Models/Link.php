@@ -47,6 +47,13 @@ class Link extends Model
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
+    /** Query version of isVisibleTo(): own or assigned links. */
+    public function scopeVisibleTo($query, User $user)
+    {
+        return $user->hasRole('superadmin') ? $query
+            : $query->where(fn ($q) => $q->where('user_id', $user->id)->orWhere('assigned_to', $user->id));
+    }
+
     public function isVisibleTo(User $user): bool
     {
         return $user->hasRole('superadmin')

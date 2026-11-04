@@ -127,13 +127,15 @@
               <!-- Right Section: Edit/Delete -->
               <div class="d-flex align-items-center gap-2">
 
-                <a href="{{ route('files.edit', $file->id) }}" class="text-primary small">✏️</a>
+                @if($file->isManageableBy(auth()->user()))
+                <a href="{{ route('files.edit', $file->id) }}" class="text-primary small" data-perm="files.edit">✏️</a>
 
-                <form action="{{ route('files.destroy', $file->id) }}" method="POST"
+                <form action="{{ route('files.destroy', $file->id) }}" method="POST" data-perm="files.delete"
                   onsubmit="return confirm('Delete this file?');">
                   @csrf @method('DELETE')
                   <button class="btn btn-sm p-0 m-0 bg-transparent text-danger small">🗑</button>
                 </form>
+                @endif
 
                 <i class="ti-new-window text-muted ml-2" aria-hidden="true"></i>
               </div>

@@ -52,6 +52,15 @@ class Folder extends Model
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
+    /** Query version of isVisibleTo(): created by, assigned to, or shared with a group the user is in. */
+    public function scopeVisibleTo($query, User $user)
+    {
+        return $user->hasRole('superadmin') ? $query
+            : $query->where(fn ($q) => $q->where('created_by', $user->id)
+                ->orWhere('assigned_to', $user->id)
+                ->orWhereIn('owner_group_id', Group::query()->visibleTo($user)->select('id')));
+    }
+
     public function isVisibleTo(User $user): bool
     {
         if ($user->hasRole('superadmin')) {
@@ -63,7 +72,8 @@ class Folder extends Model
         }
 
         if ($this->owner_group_id) {
-            return $this->group()->whereHas('users', fn ($q) => $q->where('users.id', $user->id))->exists();
+            // Same as the Folders list: shared with any group the user can see.
+            return (bool) $this->group?->isVisibleTo($user);
         }
 
         return false;

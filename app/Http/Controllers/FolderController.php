@@ -25,23 +25,30 @@ class FolderController extends Controller
             ->pluck('id');
     }
 
+    /** A folder can only be shared with a group the user can see (is in / created / assigned). */
+    private function authorizeGroup(Request $request, mixed $groupId): void
+    {
+        if ($groupId && ! $request->user()->hasRole('superadmin')) {
+            abort_unless(Group::query()->visibleTo($request->user())->whereKey($groupId)->exists(), 403, 'You can only share folders with your own groups.');
+        }
+    }
+
     public function index(Request $request)
     {
         $query = \App\Models\Folder::with('group')
             ->withCount(['subfolders', 'files'])
-            ->whereNull('parent_id') // only main folders
             ->orderBy('sort_order')
             ->orderBy('year', 'desc')
             ->orderBy('id');
 
-        if (! $request->user()->hasRole('superadmin')) {
-            $userId = $request->user()->id;
-            $groupIds = $this->visibleGroupIds($request);
-            $query->where(function ($q) use ($userId, $groupIds) {
-                $q->where('created_by', $userId)
-                    ->orWhere('assigned_to', $userId)
-                    ->orWhereIn('owner_group_id', $groupIds);
-            });
+        if ($request->user()->hasRole('superadmin')) {
+            $query->whereNull('parent_id'); // only main folders
+        } else {
+            // Members / Moderators: every folder they can see whose parent they can't —
+            // so a subfolder assigned to them still shows up here (not just main folders).
+            $visibleIds = Folder::query()->visibleTo($request->user())->pluck('id');
+            $query->whereIn('id', $visibleIds)
+                ->where(fn ($q) => $q->whereNull('parent_id')->orWhereNotIn('parent_id', $visibleIds));
         }
 
         $folders = $query->get();
@@ -78,6 +85,7 @@ class FolderController extends Controller
             $parent = Folder::find($parentId);
             abort_unless($parent && $parent->isManageableBy($request->user()), 403);
         }
+        $this->authorizeGroup($request, $validated['owner_group_id'] ?? null);
 
         $maxSortOrder = Folder::where('parent_id', $parentId)->max('sort_order');
 
@@ -169,9 +177,11 @@ class FolderController extends Controller
         }
 
         if (! empty($validated['parent_id'])) {
+            abort_if((int) $validated['parent_id'] === $folder->id, 422, 'A folder cannot be inside itself.');
             $parent = Folder::find($validated['parent_id']);
             abort_unless($parent && $parent->isManageableBy($request->user()), 403);
         }
+        $this->authorizeGroup($request, $validated['owner_group_id'] ?? null);
 
         $folder->update($validated);
 

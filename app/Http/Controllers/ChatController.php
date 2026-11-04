@@ -111,7 +111,8 @@ class ChatController extends Controller
 
     public function storeTab(Request $request, \App\Models\Group $group)
     {
-        abort_unless($group->isVisibleTo($request->user()), 403);
+        // Creating a tab is group moderation, like rename / delete / reorder.
+        abort_unless($group->isModeratedBy($request->user()), 403);
 
         $data = $request->validate([
             'tab' => "required|string|max:255"
@@ -205,11 +206,6 @@ class ChatController extends Controller
         return back()->with('success', 'Unpinned.');
     }
 
-    public function edit(Chat $chat)
-    {
-        return view('chats.edit', compact('chat'));
-    }
-
     // Show edit form for a message
     public function editMessage(Request $request, Group $group, Chat $chat, ChatMessage $message)
     {
@@ -218,7 +214,8 @@ class ChatController extends Controller
         abort_unless($group->isVisibleTo($request->user()), 403);
         abort_unless($message->user_id === $request->user()->id || $group->isModeratedBy($request->user()), 403);
 
-        return view('chats.edit-message', compact('group', 'chat', 'message'));
+        // Messages are edited in a pop-up on the chat page; this URL just goes there.
+        return redirect()->route('groups.chat.show', [$group, $chat]);
     }
 
     // Update message

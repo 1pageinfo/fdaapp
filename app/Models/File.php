@@ -46,6 +46,25 @@ class File extends Model
         return $this->uploader();
     }
 
+    /** Query version of isVisibleTo(): own uploads, or files in a folder the user can see. */
+    public function scopeVisibleTo($query, User $user)
+    {
+        return $user->hasRole('superadmin') ? $query
+            : $query->where(fn ($q) => $q->where('uploaded_by', $user->id)
+                ->orWhereIn('folder_id', Folder::query()->visibleTo($user)->select('id')));
+    }
+
+    /**
+     * Edit / delete / move: the uploader, or someone who manages the file's folder
+     * (viewing a shared folder is not enough to change other people's files).
+     */
+    public function isManageableBy(User $user): bool
+    {
+        return $user->hasRole('superadmin')
+            || $this->uploaded_by === $user->id
+            || ($this->folder && $this->folder->isManageableBy($user));
+    }
+
     public function isVisibleTo(User $user): bool
     {
         if ($user->hasRole('superadmin') || $this->uploaded_by === $user->id) {

@@ -21,7 +21,29 @@ class UserRoleController extends Controller
 
     public function update(Request $request, User $user)
     {
-        $user->roles()->sync($request->roles ?? []);
+        $request->validate([
+            'roles' => 'array',
+            'roles.*' => 'integer|exists:roles,id',
+        ]);
+        $roleIds = array_map('intval', $request->input('roles', []));
+        $superadminId = Role::where('slug', 'superadmin')->value('id');
+        $removingSuperadmin = $user->hasRole('superadmin') && ! in_array($superadminId, $roleIds, true);
+
+        // Never lock the app out: you can't drop your own superadmin role, and at
+        // least one superadmin must always remain.
+        if ($removingSuperadmin && $user->id === auth()->id()) {
+            return back()->with('error', 'You cannot remove your own superadmin role.');
+        }
+        if ($removingSuperadmin && Role::find($superadminId)->users()->count() <= 1) {
+            return back()->with('error', 'At least one superadmin is required.');
+        }
+
+        // Every account keeps a role; with none selected it falls back to Member.
+        if (! $roleIds) {
+            $roleIds = [Role::where('slug', 'member')->value('id')];
+        }
+
+        $user->roles()->sync($roleIds);
         return back()->with('success','Roles updated.');
     }
 

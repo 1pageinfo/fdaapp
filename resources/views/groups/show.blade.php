@@ -19,9 +19,11 @@
       </div>
       <div class="d-flex justify-content-between align-items-center mb-3">
         <!-- Trigger button -->
-        <button type="button" class="btn btn-sm btn-primary" data-toggle="modal" data-target="#addTabModal">
+        @if($canManageMembers)
+        <button type="button" class="btn btn-sm btn-primary" data-toggle="modal" data-target="#addTabModal" data-perm="chats.create">
           <i class="ti-plus mr-1"></i> New Tab
         </button>
+        @endif
         @if($canManageGroup)
           &nbsp; <a href="{{ route('groups.edit', $group) }}" class="btn btn-sm btn-outline-primary">
             <i class="ti-pencil mr-1"></i> Edit

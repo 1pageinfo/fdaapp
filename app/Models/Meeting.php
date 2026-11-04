@@ -47,6 +47,15 @@ class Meeting extends Model
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
+    /** Query version of isVisibleTo(): created by, assigned to, or for a group the user is in. */
+    public function scopeVisibleTo($query, User $user)
+    {
+        return $user->hasRole('superadmin') ? $query
+            : $query->where(fn ($q) => $q->where('created_by', $user->id)
+                ->orWhere('assigned_to', $user->id)
+                ->orWhereIn('group_id', Group::query()->visibleTo($user)->select('id')));
+    }
+
     public function isVisibleTo(User $user): bool
     {
         if ($user->hasRole('superadmin')) {
@@ -57,7 +66,8 @@ class Meeting extends Model
             return true;
         }
 
-        return $this->group_id && $this->group()->whereHas('users', fn ($q) => $q->where('users.id', $user->id))->exists();
+        // Same as the Meetings list: meetings of any group the user can see.
+        return $this->group_id && $this->group && $this->group->isVisibleTo($user);
     }
 
     public function isManageableBy(User $user): bool

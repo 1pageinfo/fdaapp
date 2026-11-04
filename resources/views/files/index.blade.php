@@ -22,11 +22,13 @@
                 <tr>
                     <td>{{ $item->name ?? 'N/A' }}</td>
                     <td>
-                        <a href="{{ route('files.edit', $item) }}" class="btn btn-sm btn-warning">Edit</a>
-                        <form action="{{ route('files.destroy', $item) }}" method="POST" class="d-inline">
+                        @if($item->isManageableBy(auth()->user()))
+                        <a href="{{ route('files.edit', $item) }}" class="btn btn-sm btn-warning" data-perm="files.edit">Edit</a>
+                        <form action="{{ route('files.destroy', $item) }}" method="POST" class="d-inline" data-perm="files.delete">
                             @csrf @method('DELETE')
                             <button class="btn btn-sm btn-danger" onclick="return confirm('Delete?')">Delete</button>
                         </form>
+                        @endif
                     </td>
                 </tr>
             @endforeach

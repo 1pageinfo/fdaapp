@@ -72,6 +72,10 @@ class MeetingController extends Controller
         if (! $request->user()->hasRole('superadmin')) {
             unset($validated['assigned_to']);
         }
+        // A meeting can only be attached to a group the user can see.
+        if (! empty($validated['group_id']) && ! $request->user()->hasRole('superadmin')) {
+            abort_unless(\App\Models\Group::query()->visibleTo($request->user())->whereKey($validated['group_id'])->exists(), 403, 'You can only add meetings to your own groups.');
+        }
 
         // Only persist allowed fields
         Meeting::create([
@@ -114,6 +118,10 @@ class MeetingController extends Controller
 
         if (! $request->user()->hasRole('superadmin')) {
             unset($validated['assigned_to']);
+        }
+        // A meeting can only be attached to a group the user can see.
+        if (! empty($validated['group_id']) && ! $request->user()->hasRole('superadmin')) {
+            abort_unless(\App\Models\Group::query()->visibleTo($request->user())->whereKey($validated['group_id'])->exists(), 403, 'You can only add meetings to your own groups.');
         }
 
         $meeting->update($validated);

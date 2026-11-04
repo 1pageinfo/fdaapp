@@ -47,6 +47,15 @@ class Group extends Model
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
+    /** Query version of isVisibleTo(): created by, assigned to, or a member of. */
+    public function scopeVisibleTo($query, User $user)
+    {
+        return $user->hasRole('superadmin') ? $query
+            : $query->where(fn ($q) => $q->where('created_by', $user->id)
+                ->orWhere('assigned_to', $user->id)
+                ->orWhereHas('users', fn ($u) => $u->where('users.id', $user->id)));
+    }
+
     public function isVisibleTo(User $user): bool
     {
         if ($user->hasRole('superadmin')) {
