@@ -34,9 +34,9 @@
         @php($categoryCode = strtoupper((string) old('category_code', $sangh->category_code ?? '')))
         <select name="category_code" class="form-control" required>
             <option value="">Select श्रेणी</option>
-            <option value="R" {{ $categoryCode === 'R' ? 'selected' : '' }}>ग्रामीण</option>
-            <option value="U" {{ $categoryCode === 'U' ? 'selected' : '' }}>शहरी</option>
-            <option value="A" {{ $categoryCode === 'A' ? 'selected' : '' }}>निमशहरी</option>
+            <option value="R" {{ $categoryCode === 'R' ? 'selected' : '' }}>ग्रामीण - R</option>
+            <option value="U" {{ $categoryCode === 'U' ? 'selected' : '' }}>शहरी - U</option>
+            <option value="A" {{ $categoryCode === 'A' ? 'selected' : '' }}>निमशहरी - A</option>
         </select>
     </div>
     <div class="form-group col-md-2">
@@ -44,8 +44,8 @@
         @php($sanghTypeCode = strtoupper((string) old('sangh_type_code', $sangh->sangh_type_code ?? '')))
         <select name="sangh_type_code" class="form-control" required>
             <option value="">Select प्रकार</option>
-            <option value="G" {{ $sanghTypeCode === 'G' ? 'selected' : '' }}>सर्वसाधारण</option>
-            <option value="F" {{ $sanghTypeCode === 'F' ? 'selected' : '' }}>महिला</option>
+            <option value="G" {{ $sanghTypeCode === 'G' ? 'selected' : '' }}>सर्वसाधारण - G</option>
+            <option value="F" {{ $sanghTypeCode === 'F' ? 'selected' : '' }}>महिला - F</option>
         </select>
     </div>
 </div>
