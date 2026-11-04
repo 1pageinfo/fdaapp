@@ -241,20 +241,22 @@
           try {
             const s = new Date(ev.start);
             const e = ev.end ? new Date(ev.end) : null;
+            // Always English digits, whatever language the browser is set to.
+            const NUM_LOCALE = 'en-IN-u-nu-latn';
             const dOpt = { year:'numeric', month:'short', day:'numeric' };
             const tOpt = { hour:'2-digit', minute:'2-digit' };
             if (ev.allDay) {
               if (e && s.toDateString() !== e.toDateString())
-                return `${s.toLocaleDateString(undefined,dOpt)} (All day) → ${e.toLocaleDateString(undefined,dOpt)} (All day)`;
-              return `${s.toLocaleDateString(undefined,dOpt)} · All day`;
+                return `${s.toLocaleDateString(NUM_LOCALE,dOpt)} (All day) → ${e.toLocaleDateString(NUM_LOCALE,dOpt)} (All day)`;
+              return `${s.toLocaleDateString(NUM_LOCALE,dOpt)} · All day`;
             }
             if (e) {
               const same = s.toDateString() === e.toDateString();
               return same
-                ? `${s.toLocaleDateString(undefined,dOpt)} · ${s.toLocaleTimeString(undefined,tOpt)}–${e.toLocaleTimeString(undefined,tOpt)}`
-                : `${s.toLocaleDateString(undefined,dOpt)} ${s.toLocaleTimeString(undefined,tOpt)} → ${e.toLocaleDateString(undefined,dOpt)} ${e.toLocaleTimeString(undefined,tOpt)}`;
+                ? `${s.toLocaleDateString(NUM_LOCALE,dOpt)} · ${s.toLocaleTimeString(NUM_LOCALE,tOpt)}–${e.toLocaleTimeString(NUM_LOCALE,tOpt)}`
+                : `${s.toLocaleDateString(NUM_LOCALE,dOpt)} ${s.toLocaleTimeString(NUM_LOCALE,tOpt)} → ${e.toLocaleDateString(NUM_LOCALE,dOpt)} ${e.toLocaleTimeString(NUM_LOCALE,tOpt)}`;
             }
-            return `${s.toLocaleDateString(undefined,dOpt)} · ${s.toLocaleTimeString(undefined,tOpt)}`;
+            return `${s.toLocaleDateString(NUM_LOCALE,dOpt)} · ${s.toLocaleTimeString(NUM_LOCALE,tOpt)}`;
           } catch { return ev.start || ''; }
         }
         function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }

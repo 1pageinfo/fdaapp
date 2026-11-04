@@ -16,6 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'superadmin' => \App\Http\Middleware\EnsureSuperAdmin::class,
             'guest' => \Illuminate\Auth\Middleware\RedirectIfAuthenticated::class,
         ]);
+
+        // All submitted numbers are stored with English digits (०-९ → 0-9).
+        $middleware->append(\App\Http\Middleware\ConvertDigitsToEnglish::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
