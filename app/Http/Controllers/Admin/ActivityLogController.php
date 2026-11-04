@@ -19,12 +19,20 @@ class ActivityLogController extends Controller
                   ->where('causer_type', User::class);
         }
 
+        if (in_array($request->action, ['created', 'updated', 'deleted'], true)) {
+            $query->where('event', $request->action);
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function ($q) use ($search) {
+            // "sangh receipt" should match App\Models\SanghRegistrationReceipt etc.
+            $typeSearch = str_replace(' ', '%', $search);
+            $query->where(function ($q) use ($search, $typeSearch) {
                 $q->where('description', 'like', "%{$search}%")
                   ->orWhere('event', 'like', "%{$search}%")
-                  ->orWhere('subject_type', 'like', "%{$search}%");
+                  ->orWhere('subject_type', 'like', "%{$typeSearch}%")
+                  ->orWhere('properties', 'like', "%{$search}%")
+                  ->orWhereHasMorph('causer', [User::class], fn ($u) => $u->where('name', 'like', "%{$search}%"));
             });
         }
 
