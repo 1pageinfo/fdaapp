@@ -27,6 +27,8 @@ class SanghRenewal extends Model
         'is_paid',
         'feskcom_receipt_no',
         'feskcom_receipt_date',
+        'registered_at',
+        'is_backdated',
         'male_members',
         'female_members',
         'total_members',
@@ -43,6 +45,9 @@ class SanghRenewal extends Model
     protected $casts = [
         'is_paid' => 'boolean',
         'feskcom_receipt_date' => 'date',
+        'registered_at' => 'date',
+        'cheque_date' => 'date',
+        'is_backdated' => 'boolean',
         'annual_fee' => 'decimal:2',
         'development_fee' => 'decimal:2',
         'penalty_fee' => 'decimal:2',

@@ -4,9 +4,15 @@ namespace App\Exports;
 
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithStrictNullComparison;
 use Maatwebsite\Excel\Concerns\WithTitle;
 
-class ArraySheetExport implements FromArray, WithHeadings, WithTitle
+/**
+ * One sheet from plain arrays. WithStrictNullComparison keeps real zeros (e.g.
+ * पुरुष सभासद = 0, बाकी रक्कम = 0) instead of writing them as blank cells, so an
+ * exported file re-imports to exactly the same data.
+ */
+class ArraySheetExport implements FromArray, WithHeadings, WithTitle, WithStrictNullComparison
 {
     public function __construct(
         private string $title,

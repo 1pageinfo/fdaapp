@@ -19,7 +19,9 @@
     @endif
 
     @php
-        $activeTab = $selectedUser ? 'access' : 'general';
+        $activeTab = request('tab') === 'fields' && $canManagePermissions
+            ? 'fields'
+            : ($selectedUser ? 'access' : 'general');
     @endphp
 
     {{-- Tab navigation --}}
@@ -34,6 +36,13 @@
                 <i class="ti-shield mr-1"></i> Roles &amp; Access
             </a>
         </li>
+        @if($canManagePermissions)
+        <li class="nav-item">
+            <a class="nav-link {{ $activeTab === 'fields' ? 'active' : '' }}" data-toggle="tab" href="#tab-fields" role="tab">
+                <i class="ti-lock mr-1"></i> Sangh Form Fields
+            </a>
+        </li>
+        @endif
         <li class="nav-item">
             <a class="nav-link" data-toggle="tab" href="#tab-fees" role="tab">
                 <i class="ti-money mr-1"></i> Sangh Fees
@@ -103,7 +112,8 @@
                     <h5 class="d-flex align-items-center mb-1">
                         <i class="ti-key mr-2 text-warning"></i> User Permissions
                     </h5>
-                    <p class="text-muted small mb-3">Grant a specific user fine-grained access per feature.</p>
+                    <p class="text-muted small mb-1">Grant a specific user (Member or Moderator) access per feature. They only ever see their own / assigned records.</p>
+                    <p class="text-muted small mb-3"><i class="ti-info-alt"></i> Always available to everyone: Dashboard (own counts), Contacts, Profile, Search, Notifications, Activity Logs (own). Settings, Sangh Fees and Manage Users are superadmin only.</p>
 
                     {{-- User search / select --}}
                     <div class="mb-1" style="max-width: 420px; position: relative;">
@@ -212,6 +222,118 @@
             </div>
             @endif
         </div>
+
+        {{-- ===================== SANGH FORM FIELDS (superadmin) ===================== --}}
+        @if($canManagePermissions)
+        @php
+            $sanghFieldGroups = \App\Support\SanghFormFields::GROUPS;
+            $fieldUser = $activeTab === 'fields' ? $selectedUser : null;
+            $lockedForSelected = $fieldUser ? \App\Support\SanghFormFields::sanitize((array) ($fieldUser->locked_sangh_fields ?? [])) : [];
+            $usersWithLocks = $users->filter(fn ($u) => count(\App\Support\SanghFormFields::sanitize((array) ($u->locked_sangh_fields ?? []))) > 0);
+        @endphp
+        <div class="tab-pane fade {{ $activeTab === 'fields' ? 'show active' : '' }}" id="tab-fields" role="tabpanel">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h5 class="d-flex align-items-center mb-1">
+                        <i class="ti-lock mr-2 text-danger"></i> Sangh Form Fields
+                    </h5>
+                    <p class="text-muted small mb-3">
+                        Choose which Sangh form fields each user can fill in or change. Switched-off fields are shown
+                        locked (🔒) on the Sangh form: when editing, the saved value is kept; when creating, the field is
+                        left empty. Superadmins can always edit every field.
+                    </p>
+
+                    {{-- User picker --}}
+                    <div class="mb-3" style="max-width: 420px;">
+                        <label class="form-label small text-muted mb-1">Select user</label>
+                        <select class="form-control" id="fieldUserSelect">
+                            <option value="">— Select a user —</option>
+                            @foreach($users as $u)
+                                <option value="{{ $u->id }}" @selected($fieldUser && $fieldUser->id === $u->id)>
+                                    {{ $u->name }} ({{ $u->email }})
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    @if(! $fieldUser)
+                        {{-- Overview of who currently has locked fields --}}
+                        @if($usersWithLocks->isEmpty())
+                            <p class="text-muted small mb-0">No fields are locked for anyone yet — every user can edit every Sangh form field. Select a user above to lock fields.</p>
+                        @else
+                            <h6 class="small text-uppercase text-muted font-weight-bold mt-4 mb-2">Users with locked fields</h6>
+                            <ul class="list-group">
+                                @foreach($usersWithLocks as $u)
+                                    @php($uLocked = \App\Support\SanghFormFields::sanitize((array) $u->locked_sangh_fields))
+                                    <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center">
+                                        <div>
+                                            <div class="font-weight-bold">{{ $u->name }}</div>
+                                            <div class="small text-muted">
+                                                🔒 {{ implode(', ', array_map([\App\Support\SanghFormFields::class, 'label'], $uLocked)) }}
+                                            </div>
+                                        </div>
+                                        <a href="{{ route('settings.index', ['user_id' => $u->id, 'tab' => 'fields']) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    @elseif($fieldUser->hasRole('superadmin'))
+                        <div class="alert alert-info small mb-0">
+                            <i class="ti-info-alt mr-1"></i> {{ $fieldUser->name }} is a superadmin and can always edit every field.
+                        </div>
+                    @else
+                    <form method="POST" action="{{ route('settings.sangh_fields.update') }}">
+                        @csrf @method('PUT')
+                        <input type="hidden" name="user_id" value="{{ $fieldUser->id }}">
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                            <span class="small text-muted">
+                                <strong>{{ $fieldUser->name }}</strong> —
+                                <span id="sanghFieldsLockedCount">{{ count($lockedForSelected) }}</span> locked
+                            </span>
+                            <div class="btn-group">
+                                <button type="button" id="sangh-fields-allow-all" class="btn btn-sm btn-outline-primary">
+                                    <i class="ti-unlock mr-1"></i>Allow All
+                                </button>
+                                <button type="button" id="sangh-fields-lock-all" class="btn btn-sm btn-outline-danger">
+                                    <i class="ti-lock mr-1"></i>Lock All
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            @foreach($sanghFieldGroups as $groupLabel => $fields)
+                                <div class="col-md-6 col-xl-4 mb-3">
+                                    <div class="card border h-100">
+                                        <div class="card-header bg-light py-2 small font-weight-bold">{{ $groupLabel }}</div>
+                                        <ul class="list-group list-group-flush">
+                                            @foreach($fields as $field => $label)
+                                                <li class="list-group-item py-2 d-flex justify-content-between align-items-center">
+                                                    <label for="sf-{{ $field }}" class="mb-0 small">{{ $label }}</label>
+                                                    <div class="custom-control custom-switch">
+                                                        <input type="checkbox" class="custom-control-input sangh-field-toggle"
+                                                               id="sf-{{ $field }}" name="editable_fields[]" value="{{ $field }}"
+                                                               {{ in_array($field, $lockedForSelected, true) ? '' : 'checked' }}>
+                                                        <label class="custom-control-label" for="sf-{{ $field }}"></label>
+                                                    </div>
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <button class="btn btn-success">
+                            <i class="ti-save mr-1"></i>Save Field Access
+                        </button>
+                        <a href="{{ route('settings.index', ['tab' => 'fields']) }}" class="btn btn-secondary">Back</a>
+                    </form>
+                    @endif
+                </div>
+            </div>
+        </div>
+        @endif
 
         {{-- ===================== SANGH FEES ===================== --}}
         <div class="tab-pane fade" id="tab-fees" role="tabpanel">
@@ -331,6 +453,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("uncheck-all")?.addEventListener("click", () => {
         document.querySelectorAll(permCB).forEach(cb => cb.checked = false);
+    });
+
+    // Sangh form field access: Allow all / Lock all + live "N locked" count
+    const fieldToggles = () => document.querySelectorAll('input.sangh-field-toggle');
+    const refreshLockedCount = () => {
+        const out = document.getElementById('sanghFieldsLockedCount');
+        if (out) out.textContent = [...fieldToggles()].filter(cb => !cb.checked).length;
+    };
+    document.getElementById('sangh-fields-allow-all')?.addEventListener('click', () => {
+        fieldToggles().forEach(cb => cb.checked = true); refreshLockedCount();
+    });
+    document.getElementById('sangh-fields-lock-all')?.addEventListener('click', () => {
+        fieldToggles().forEach(cb => cb.checked = false); refreshLockedCount();
+    });
+    fieldToggles().forEach(cb => cb.addEventListener('change', refreshLockedCount));
+    document.getElementById('fieldUserSelect')?.addEventListener('change', function () {
+        window.location.href = '{{ route('settings.index') }}?tab=fields' + (this.value ? '&user_id=' + this.value : '');
     });
 
     // Feature filter

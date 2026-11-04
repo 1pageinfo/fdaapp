@@ -58,7 +58,8 @@ Route::post('logout', [LoginController::class, 'logout'])->name('logout');
 Route::middleware('auth')->group(function () {
 
     // Dashboard
-    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard')->middleware('permission:dashboard.view');
+    // Always available to every signed-in user; counts are scoped to what they can see.
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Serves files from the "public" disk through the app (see MediaController)
     // instead of depending on the web server to serve public/storage statically.
@@ -81,7 +82,7 @@ Route::middleware('auth')->group(function () {
         ->middlewareFor(['create', 'store'], 'permission:folders.create')
         ->middlewareFor(['edit', 'update'], 'permission:folders.edit')
         ->middlewareFor('destroy', 'permission:folders.delete');
-    Route::resource('receipts', ReceiptController::class)
+    Route::resource('receipts', ReceiptController::class)->only(['index', 'create', 'store'])
         ->middlewareFor('index', 'permission:receipts.view')
         ->middlewareFor(['create', 'store'], 'permission:receipts.create');
     Route::resource('meetings', MeetingController::class)
@@ -103,14 +104,15 @@ Route::middleware('auth')->group(function () {
    
 
     // Settings (global)
-    Route::get('/settings', [SettingController::class, 'index'])->name('settings.index')->middleware('permission:settings.view');
-    Route::put('/settings', [SettingController::class, 'update'])->name('settings.update')->middleware('permission:settings.edit');
+    Route::get('/settings', [SettingController::class, 'index'])->name('settings.index')->middleware('superadmin');
+    Route::put('/settings', [SettingController::class, 'update'])->name('settings.update')->middleware('superadmin');
+    Route::put('/settings/sangh-fields', [SettingController::class, 'updateSanghFields'])->name('settings.sangh_fields.update')->middleware('superadmin');
 
     // Sangh fee slabs (linked to sangh registrations)
-    Route::get('/settings/sangh-fees', [SanghFeeSettingController::class, 'edit'])->name('settings.sangh_fees.edit')->middleware('permission:sangh_fee.view');
-    Route::put('/settings/sangh-fees', [SanghFeeSettingController::class, 'update'])->name('settings.sangh_fees.update')->middleware('permission:sangh_fee.edit');
-    Route::post('/settings/sangh-fees/slabs', [SanghFeeSettingController::class, 'storeSlab'])->name('settings.sangh_fees.slabs.store')->middleware('permission:sangh_fee.edit');
-    Route::delete('/settings/sangh-fees/slabs/{slab}', [SanghFeeSettingController::class, 'destroySlab'])->name('settings.sangh_fees.slabs.destroy')->middleware('permission:sangh_fee.edit');
+    Route::get('/settings/sangh-fees', [SanghFeeSettingController::class, 'edit'])->name('settings.sangh_fees.edit')->middleware('superadmin');
+    Route::put('/settings/sangh-fees', [SanghFeeSettingController::class, 'update'])->name('settings.sangh_fees.update')->middleware('superadmin');
+    Route::post('/settings/sangh-fees/slabs', [SanghFeeSettingController::class, 'storeSlab'])->name('settings.sangh_fees.slabs.store')->middleware('superadmin');
+    Route::delete('/settings/sangh-fees/slabs/{slab}', [SanghFeeSettingController::class, 'destroySlab'])->name('settings.sangh_fees.slabs.destroy')->middleware('superadmin');
 
     // Profile (user personal settings)
     Route::get('/profile', [ProfileController::class, 'index'])->name('profile.index');
@@ -118,7 +120,8 @@ Route::middleware('auth')->group(function () {
     Route::put('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
 
     // Contacts directory
-    Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index')->middleware('permission:contacts.view');
+    // Contacts directory — every signed-in user sees all contacts.
+    Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
 
     Route::prefix('admin')->group(function () {
         Route::middleware('superadmin')->group(function () {
@@ -127,8 +130,7 @@ Route::middleware('auth')->group(function () {
             Route::delete('/user-roles/{user}', [UserRoleController::class, 'destroy'])->name('admin.user_roles.destroy');
         });
         Route::get('/activity-logs', [ActivityLogController::class, 'index'])
-            ->name('admin.activity_logs.index')
-            ->middleware('permission:audit.view');
+            ->name('admin.activity_logs.index'); // everyone; non-superadmins see only their own activity
     });
 
 
@@ -136,7 +138,9 @@ Route::middleware('auth')->group(function () {
     Route::get('sanghs-export', [SanghController::class, 'exportExcel'])->name('sanghs.export')->middleware('permission:sanghs.view');
     Route::post('sanghs-import', [SanghController::class, 'importExcel'])->name('sanghs.import')->middleware('permission:sanghs.create');
     Route::get('sanghs-template', [SanghController::class, 'downloadTemplate'])->name('sanghs.template')->middleware('permission:sanghs.create');
-    Route::post('sanghs-seed-placeholders', [SanghController::class, 'seedPlaceholders'])->name('sanghs.seed_placeholders')->middleware('superadmin');
+    Route::post('sanghs-import-range', [SanghController::class, 'importByRange'])->name('sanghs.import_range')->middleware('superadmin');
+    Route::post('sanghs-seed-placeholders',[SanghController::class, 'seedPlaceholders'])->name('sanghs.seed_placeholders')->middleware('superadmin');
+    Route::get('/sanghs/{sangh}/receipts', [SanghController::class, 'receipts'])->name('sanghs.receipts')->middleware('permission:sanghs.view');
     Route::post('/sanghs/{sangh}/registration-receipt', [SanghController::class, 'updateRegistrationReceipt'])->name('sanghs.registration_receipt.update')->middleware('permission:sanghs.edit');
     Route::post('/sanghs/{sangh}/renewals/create-year', [SanghController::class, 'createRenewal'])->name('sanghs.renewals.create')->middleware('permission:sanghs.edit');
     Route::delete('/sanghs/{sangh}/renewals/{year}', [SanghController::class, 'destroyRenewal'])->name('sanghs.renewals.destroy')->middleware('permission:sanghs.delete');
@@ -173,7 +177,6 @@ Route::middleware('auth')->group(function () {
 
     // Poll endpoint
     Route::get('groups/{group}/chat/{chat}/poll', [ChatController::class, 'poll'])->name('groups.chat.poll')->middleware('permission:chats.view');
-    Route::get('/chats/{chat}/edit', [ChatController::class, 'edit'])->name('chats.edit');
     Route::get(
         '/groups/{group}/chats/{chat}/messages/{message}/edit',
         [ChatController::class, 'editMessage']
@@ -191,6 +194,6 @@ Route::middleware('auth')->group(function () {
 
 
 
-    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index')->middleware('permission:notifications.view'); // JSON for header bell
-    Route::get('/search', [SearchController::class, 'index'])->name('search.index')->middleware('permission:search.view');
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index'); // JSON for header bell
+    Route::get('/search', [SearchController::class, 'index'])->name('search.index'); // each section checks its own view permission
 });

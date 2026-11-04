@@ -20,6 +20,16 @@
 </div>
 @endif
 
+{{-- Fields the admin locked for this user (Settings → Sangh Form Fields). The server
+     ignores them on save; the script at the bottom of this file greys them out. --}}
+@php($lockedSanghFields = \App\Support\SanghFormFields::lockedFor(auth()->user()))
+@if(count($lockedSanghFields) > 0)
+<div class="alert alert-secondary py-2 small" id="sanghLockedNotice">
+    <i class="fa fa-lock"></i>
+    Fields marked <i class="fa fa-lock"></i> are locked by the administrator and can't be changed.
+</div>
+@endif
+
 <div class="form-row">
     <div class="form-group col-md-3">
         <label>वर्ष</label>
@@ -288,19 +298,30 @@
 
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-body py-3">
-        <h6 class="text-muted text-uppercase mb-3" style="font-size:12px;">प्रादेशिक विभागाने घेतलेल्या रकमेचे तपशील (fees taken by Pradeshik Vibhag)</h6>
+        <h6 class="text-muted text-uppercase mb-1" style="font-size:12px;">प्रादेशिक विभागाने घेतलेल्या रकमेचे तपशील (fees taken by Pradeshik Vibhag)</h6>
+        <small class="text-muted d-block mb-3">
+            Calculated automatically from Settings → Sangh Fees:
+            प्रवेश शुल्क × {{ \App\Support\PradeshikFees::ADMISSION_MULTIPLIER }},
+            वार्षिक शुल्क × {{ \App\Support\PradeshikFees::ANNUAL_MULTIPLIER }},
+            विकास निधी शुल्क × {{ \App\Support\PradeshikFees::DEVELOPMENT_MULTIPLIER }}.
+        </small>
+        {{-- Display only (no name): the server recalculates these on save. --}}
         <div class="form-row mb-0">
-            <div class="form-group col-md-4">
+            <div class="form-group col-md-3 mb-0">
                 <label>प्रवेश शुल्क</label>
-                <input type="number" min="0" step="1" name="pradeshik_admission_fee" class="form-control" value="{{ old('pradeshik_admission_fee', $sangh->pradeshik_admission_fee ?? '') }}">
+                <input type="text" id="pradeshik_fee_admission" class="form-control bg-light" readonly>
             </div>
-            <div class="form-group col-md-4">
+            <div class="form-group col-md-3 mb-0">
                 <label>वार्षिक शुल्क</label>
-                <input type="number" min="0" step="1" name="pradeshik_annual_fee" class="form-control" value="{{ old('pradeshik_annual_fee', $sangh->pradeshik_annual_fee ?? '') }}">
+                <input type="text" id="pradeshik_fee_annual" class="form-control bg-light" readonly>
             </div>
-            <div class="form-group col-md-4">
+            <div class="form-group col-md-3 mb-0">
                 <label>विकास निधी शुल्क</label>
-                <input type="number" min="0" step="1" name="pradeshik_development_fee" class="form-control" value="{{ old('pradeshik_development_fee', $sangh->pradeshik_development_fee ?? '') }}">
+                <input type="text" id="pradeshik_fee_development" class="form-control bg-light" readonly>
+            </div>
+            <div class="form-group col-md-3 mb-0">
+                <label class="fw-bold">एकूण घेतलेली रक्कम (Total)</label>
+                <input type="text" id="pradeshik_fee_total" class="form-control bg-warning-subtle fw-bold border-warning" readonly>
             </div>
         </div>
     </div>
@@ -517,6 +538,20 @@
             feeAnnualField.value = formatFee(annual);
             feeDevelopmentField.value = formatFee(development);
             feePayableField.value = formatFee(admissionFeeStd + annual + development);
+
+            // प्रादेशिक विभागाची फी = the same slab fees × multipliers (see App\Support\PradeshikFees)
+            const pf = @json(\App\Support\PradeshikFees::forJs());
+            const pAdmission = document.getElementById('pradeshik_fee_admission');
+            if (pAdmission) {
+                const hasMembers = total !== null && total !== '' && !isNaN(total);
+                const pa = hasMembers ? pf.admission * pf.multipliers.admission : null;
+                const pn = hasMembers ? annual * pf.multipliers.annual : null;
+                const pd = hasMembers ? Math.round(pf.developmentRate * totalN * pf.multipliers.development) : null;
+                pAdmission.value = hasMembers ? formatFee(pa) : '-';
+                document.getElementById('pradeshik_fee_annual').value = hasMembers ? formatFee(pn) : '-';
+                document.getElementById('pradeshik_fee_development').value = hasMembers ? formatFee(pd) : '-';
+                document.getElementById('pradeshik_fee_total').value = hasMembers ? formatFee(pa + pn + pd) : '-';
+            }
         }
 
         // Collect all district options (except the blank first one) into memory once
@@ -758,7 +793,8 @@
         if (sanghForm) {
             sanghForm.addEventListener('submit', function (e) {
                 const total = parseInt(totalMembersField.value || '0', 10) || 0;
-                if (total < 25) {
+                // Skipped when the admin locked the member counts for this user — they can't fix them.
+                if (total < 25 && !sanghForm.dataset.membersLocked) {
                     e.preventDefault();
                     alert('एकूण सभासद किमान 25 असणे आवश्यक आहे.\nMinimum 25 total members required to save.');
                     maleField.focus();
@@ -767,3 +803,56 @@
         }
     })();
 </script>
+
+@if(count($lockedSanghFields) > 0)
+<style>
+    .sangh-field-locked { background-color: #e9ecef !important; cursor: not-allowed; }
+    .sangh-lock-icon { color: #6c757d; margin-left: .25rem; font-size: .85em; }
+</style>
+<script>
+    // Lock the fields the admin disabled for this user. Disabled controls aren't
+    // submitted (the server ignores them anyway) and skip browser "required" checks.
+    // Other scripts on this form (taluka list, address type) toggle disabled/required,
+    // so a MutationObserver puts the lock back whenever they do.
+    (function () {
+        const locked = @json($lockedSanghFields);
+        // Visible stand-ins for fields stored in hidden inputs.
+        const extra = { pincode: ['#pincode_search'] };
+
+        const lock = (el) => {
+            if (!el.disabled) el.disabled = true;
+            if (el.required) el.required = false;
+            el.classList.add('sangh-field-locked');
+            el.title = 'Locked by administrator';
+        };
+
+        const apply = () => {
+            locked.forEach((name) => {
+                const els = [
+                    ...document.querySelectorAll(`[name="${name}"]`),
+                    ...(extra[name] || []).flatMap((sel) => [...document.querySelectorAll(sel)]),
+                ];
+                els.forEach((el) => {
+                    lock(el);
+                    const label = el.closest('.form-group')?.querySelector('label');
+                    if (label && !label.querySelector('.sangh-lock-icon')) {
+                        label.insertAdjacentHTML('beforeend', ' <i class="fa fa-lock sangh-lock-icon" title="Locked by administrator"></i>');
+                    }
+                    new MutationObserver(() => lock(el)).observe(el, { attributes: true, attributeFilter: ['disabled', 'required'] });
+                });
+            });
+
+            if (locked.includes('male') || locked.includes('female')) {
+                const form = document.querySelector('[name="name_of_sangh"]')?.closest('form');
+                if (form) form.dataset.membersLocked = '1';
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', apply);
+        } else {
+            apply();
+        }
+    })();
+</script>
+@endif

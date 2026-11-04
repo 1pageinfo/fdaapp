@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\Permission;
+use App\Support\SanghFormFields;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -15,10 +16,30 @@ class SettingController extends Controller
      * All valid "feature.action" slugs, as defined in config/app_permissions.php.
      * Anything outside this set is rejected — permissions are curated, not free text.
      */
+    /**
+     * Features a superadmin can grant per user — config minus always-on features
+     * (every user has them) and superadmin-only ones (never grantable).
+     */
+    private function grantableCategories(): array
+    {
+        $out = [];
+        foreach (config('app_permissions.categories', []) as $key => $category) {
+            $category['features'] = array_filter(
+                $category['features'],
+                fn ($def) => empty($def['always_on']) && empty($def['superadmin_only'])
+            );
+            if ($category['features']) {
+                $out[$key] = $category;
+            }
+        }
+
+        return $out;
+    }
+
     private function validSlugs(): array
     {
         $slugs = [];
-        foreach (config('app_permissions.categories', []) as $category) {
+        foreach ($this->grantableCategories() as $category) {
             foreach ($category['features'] as $feature => $def) {
                 foreach ($def['actions'] as $action) {
                     $slugs[] = "{$feature}.{$action}";
@@ -52,7 +73,7 @@ class SettingController extends Controller
             'contact_email' => Setting::getValue('contact_email', ''),
         ];
 
-        $categories = config('app_permissions.categories', []);
+        $categories = $this->grantableCategories();
 
         return view('settings.index', compact('users', 'selectedUser', 'assignedSlugs', 'settings', 'categories', 'canManagePermissions'));
     }
@@ -120,5 +141,37 @@ class SettingController extends Controller
         }
 
         return back()->with('success', 'Settings Saved!');
+    }
+
+    // -------------------------------
+    // SANGH FORM FIELD ACCESS (per user)
+    // -------------------------------
+    /**
+     * Save which Sangh form fields a user may edit. The form submits the fields
+     * left switched ON (editable); everything else is stored as locked.
+     */
+    public function updateSanghFields(Request $request)
+    {
+        abort_unless($request->user()->hasRole('superadmin'), 403);
+
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'editable_fields' => 'array',
+            'editable_fields.*' => 'string',
+        ]);
+
+        $user = User::findOrFail($request->user_id);
+        $editable = SanghFormFields::sanitize($request->input('editable_fields', []));
+        $locked = array_values(array_diff(SanghFormFields::names(), $editable));
+
+        $user->forceFill(['locked_sangh_fields' => $locked ?: null])->save();
+
+        $message = $locked
+            ? count($locked) . ' Sangh form field(s) locked for ' . $user->name . '.'
+            : 'All Sangh form fields are editable for ' . $user->name . '.';
+
+        return redirect()
+            ->route('settings.index', ['user_id' => $user->id, 'tab' => 'fields'])
+            ->with('success', $message);
     }
 }

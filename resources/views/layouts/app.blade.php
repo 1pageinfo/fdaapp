@@ -101,9 +101,11 @@
               <a class="dropdown-item" href="{{ route('profile.index') }}">
                 <i class="ti-user text-primary"></i> Profile
               </a>
+              @if(auth()->user()->hasRole('superadmin'))
               <a class="dropdown-item" href="{{ route('settings.index') }}">
                 <i class="ti-settings text-primary"></i> Settings
               </a>
+              @endif
               <div class="dropdown-divider"></div>
               <form action="{{ route('logout') }}" method="POST" class="m-0">
                 @csrf
@@ -134,8 +136,7 @@
         <ul class="nav">
           {{-- Dashboard --}}
           <li class="nav-item">
-            <a class="nav-link {{ request()->is('dashboard') ? 'active' : '' }}" href="{{ url('/dashboard') }}"
-              data-perm="dashboard.view">
+            <a class="nav-link {{ request()->is('dashboard') ? 'active' : '' }}" href="{{ url('/dashboard') }}">
               <i class="icon-grid menu-icon"></i>
               <span class="menu-title">Dashboard</span>
             </a>
@@ -187,8 +188,7 @@
 
           {{-- Contacts --}}
           <li class="nav-item">
-            <a class="nav-link {{ request()->is('contacts*') ? 'active' : '' }}" href="{{ route('contacts.index') }}"
-              data-perm="contacts.view">
+            <a class="nav-link {{ request()->is('contacts*') ? 'active' : '' }}" href="{{ route('contacts.index') }}">
               <i class="fa fa-address-book menu-icon"></i>
               <span class="menu-title">Contacts</span>
             </a>
@@ -225,14 +225,15 @@
           </li>
           --}}
 
-          {{-- Settings --}}
+          {{-- Settings (superadmin only) --}}
+          @if(auth()->check() && auth()->user()->hasRole('superadmin'))
           <li class="nav-item">
-            <a class="nav-link {{ request()->is('settings') ? 'active' : '' }}" href="{{ route('settings.index') }}"
-              data-perm="settings.view">
+            <a class="nav-link {{ request()->is('settings*') ? 'active' : '' }}" href="{{ route('settings.index') }}">
               <i class="ti-settings menu-icon"></i>
               <span class="menu-title">Settings</span>
             </a>
           </li>
+          @endif
 
           {{-- Manage Users (role assignment is superadmin-only, not permission-gated) --}}
           @if(auth()->check() && auth()->user()->hasRole('superadmin'))
@@ -246,8 +247,7 @@
 
           {{-- Activity Logs --}}
           <li class="nav-item">
-            <a class="nav-link {{ request()->is('admin/activity-logs*') ? 'active' : '' }}" href="{{ route('admin.activity_logs.index') }}"
-              data-perm="audit.view">
+            <a class="nav-link {{ request()->is('admin/activity-logs*') ? 'active' : '' }}" href="{{ route('admin.activity_logs.index') }}">
               <i class="fa fa-history menu-icon"></i>
               <span class="menu-title">Activity Logs</span>
             </a>
@@ -418,6 +418,33 @@
     <script src="{{ asset('theme/js/dashboard.js') }}"></script>
     <script src="{{ asset('theme/js/Chart.roundedBarCharts.js') }}"></script>
     <!-- End custom js for this page-->
+
+    <script>
+        // English digits everywhere: as soon as ०-९ (or another Indic digit) is typed
+        // or pasted into any text box, swap it for 0-9. Runs in the capture phase so
+        // per-field scripts (e.g. "Marathi only" filters) already see English digits.
+        // The server converts too (ConvertDigitsToEnglish middleware); this is so the
+        // user sees the English number immediately.
+        (function () {
+            const INDIC_DIGITS = /[०-९૦-૯੦-੯০-৯٠-٩۰-۹]/g;
+            const ZERO_POINTS = [0x0966, 0x0AE6, 0x0A66, 0x09E6, 0x0660, 0x06F0];
+            const toEnglish = (s) => s.replace(INDIC_DIGITS, (ch) => {
+                const code = ch.charCodeAt(0);
+                const zero = ZERO_POINTS.find((z) => code >= z && code <= z + 9);
+                return String(code - zero);
+            });
+
+            document.addEventListener('input', function (e) {
+                const el = e.target;
+                if (!el || !('value' in el) || el.type === 'password' || el.type === 'file') return;
+                if (typeof el.value !== 'string' || !INDIC_DIGITS.test(el.value)) return;
+                INDIC_DIGITS.lastIndex = 0;
+                const pos = el.selectionStart;
+                el.value = toEnglish(el.value);
+                try { if (pos !== null) el.setSelectionRange(pos, pos); } catch (_) { /* e.g. type=email */ }
+            }, true);
+        })();
+    </script>
 </body>
 
 </html>

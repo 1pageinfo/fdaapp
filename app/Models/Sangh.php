@@ -20,6 +20,15 @@ class Sangh extends Model
             ->dontSubmitEmptyLogs();
     }
 
+    protected static function booted(): void
+    {
+        // प्रादेशिक विभागाची फी is always calculated from the member counts and
+        // Settings → Sangh Fees (see PradeshikFees) — whichever screen or import saves.
+        static::saving(function (Sangh $sangh) {
+            $sangh->fill(\App\Support\PradeshikFees::attributes($sangh->male, $sangh->female));
+        });
+    }
+
     protected $fillable = [
         'sangh_sr_no',
         'unique_ref_no',
@@ -114,6 +123,13 @@ class Sangh extends Model
     public function assignedTo()
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /** Query version of isVisibleTo(): created by or assigned to the user (superadmin: all). */
+    public function scopeVisibleTo($query, User $user)
+    {
+        return $user->hasRole('superadmin') ? $query
+            : $query->where(fn ($q) => $q->where('created_by', $user->id)->orWhere('assigned_to', $user->id));
     }
 
     public function isVisibleTo(User $user): bool

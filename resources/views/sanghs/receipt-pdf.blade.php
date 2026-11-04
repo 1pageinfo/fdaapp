@@ -204,8 +204,8 @@
                 <div class="detail-value">@fy($renewal->renewal_year)</div>
             </div>
             <div class="detail-row">
-                <div class="detail-label">दिनांक (Date):</div>
-                <div class="detail-value">{{ now()->format('d-m-Y') }}</div>
+                <div class="detail-label">संघ नोंदणी दिनांक (Registered Date):</div>
+                <div class="detail-value">{{ optional($renewal->registered_at)->format('d-m-Y') ?? 'N/A' }}</div>
             </div>
             <div class="detail-row">
                 <div class="detail-label">स्थिति (Status):</div>

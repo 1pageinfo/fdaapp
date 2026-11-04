@@ -7,6 +7,8 @@ use App\Models\SanghFeeSlab;
 use App\Models\SanghRegistrationReceipt;
 use App\Models\SanghRenewal;
 use App\Models\Setting;
+use App\Support\Digits;
+use App\Support\SanghFormFields;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -20,7 +22,12 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class SanghController extends Controller
 {
+    /** Links rows to the exact Sangh on re-import (works even before it has a Unique number). */
+    private const ID_HEADER = 'Sangh ID (system - do not change)';
+
     private const IMPORT_HEADERS = [
+        self::ID_HEADER,
+        'Sangh Sr. No.',
         'Unique संघाचा अनु क्र.',
         'प्रादेशिक विभागातील संघाचा अनु क्र.',
         'जिल्हा मधे संघाचा अनु. क्र.',
@@ -52,22 +59,61 @@ class SanghController extends Controller
         'सचिव मोबाईल',
         'सचिव व्हॉट्सअप',
         'सचिव इमेल',
+        'फॉर्म तयार केल्याची तारीख',
     ];
 
-    private const RENEWAL_HEADERS = [
+    /** Sheet 2: the New register Sangh receipt (one per Sangh). */
+    private const REGISTRATION_HEADERS = [
+        self::ID_HEADER,
         'Unique संघाचा अनु क्र.',
+        'संघाचे नाव',
         'वर्ष',
+        'स्थिती',
         'फेस्कॉम पावती क्र.',
         'फेस्कॉम पावती दिनांक',
+        'संघ नोंदणी दिनांक',
+        'पुरुष सभासद संख्या',
+        'महिला सभासद संख्या',
+        'एकूण सभासद संख्या',
+        'प्रवेश शुल्क',
+        'वार्षिक शुल्क',
+        'विकास निधी शुल्क',
+        'एकूण रक्कम',
+        'पावती रक्कम (भरलेली)',
+        'बाकी रक्कम',
+        'बँकेचे नाव',
+        'चेक क्रमांक',
+        'चेक दिनांक',
+    ];
+
+    /** Sheet 3: Renewal and Backdated receipts (one row per year). */
+    private const RENEWAL_HEADERS = [
+        self::ID_HEADER,
+        'Unique संघाचा अनु क्र.',
+        'संघाचे नाव',
+        'वर्ष',
+        'प्रकार',
+        'स्थिती',
+        'फेस्कॉम पावती क्र.',
+        'फेस्कॉम पावती दिनांक',
+        'संघ नोंदणी दिनांक',
         'पुरुष सभासद संख्या',
         'महिला सभासद संख्या',
         'एकूण सभासद संख्या',
         'वार्षिक शुल्क',
         'विकास निधी शुल्क',
         'दंड शुल्क',
+        'एकूण रक्कम',
         'पावती रक्कम (भरलेली)',
-        'स्थिती',
+        'बाकी रक्कम',
+        'बँकेचे नाव',
+        'चेक क्रमांक',
+        'चेक दिनांक',
     ];
+
+    private const SHEET_MASTER = 'Sangh Master';
+    private const SHEET_REGISTRATION = 'Registration Receipts';
+    private const SHEET_RENEWALS = 'Renewals';
 
     private function applyFilters($query, \Illuminate\Http\Request $request)
     {
@@ -91,57 +137,84 @@ class SanghController extends Controller
             $query->where('registration_year', (int) $request->input('year'));
         }
 
-        if ($request->filled('from_date')) {
-            $query->whereDate('created_at', '>=', $request->input('from_date'));
+        // Created-date range. Invalid dates are ignored; a reversed range is swapped
+        // so "From 30-11 To 01-11" still means November rather than returning nothing.
+        $fromDate = $this->parseFilterDate($request->input('from_date'));
+        $toDate = $this->parseFilterDate($request->input('to_date'));
+        if ($fromDate && $toDate && $fromDate->gt($toDate)) {
+            [$fromDate, $toDate] = [$toDate, $fromDate];
         }
-
-        if ($request->filled('to_date')) {
-            $query->whereDate('created_at', '<=', $request->input('to_date'));
+        if ($fromDate) {
+            $query->where('created_at', '>=', $fromDate->copy()->startOfDay());
+        }
+        if ($toDate) {
+            $query->where('created_at', '<=', $toDate->copy()->endOfDay());
         }
 
         // Ownership filter
-        if ($request->filled('ownership')) {
-            $ownership = $request->input('ownership');
-            if ($ownership === 'created_by_me') {
-                $query->where('created_by', auth()->id());
-            } elseif ($ownership === 'assigned_to_me') {
-                $query->where('assigned_to', auth()->id());
-            }
+        $ownership = $request->input('ownership');
+        if ($ownership === 'created_by_me') {
+            $query->where('created_by', $request->user()->id);
+        } elseif ($ownership === 'assigned_to_me') {
+            $query->where('assigned_to', $request->user()->id);
         }
 
-        // Register Receipts filter (Year with payment status)
-        if ($request->filled('register_receipt_year')) {
-            $query->whereHas('registrationReceipt', function ($receiptQuery) use ($request) {
-                $receiptQuery->where('receipt_year', (int) $request->input('register_receipt_year'));
-                if ($request->filled('payment_status')) {
-                    $receiptQuery->where('status', $request->input('payment_status'));
+        $status = in_array($request->input('payment_status'), ['unpaid', 'information_approved', 'sangh_registered'], true)
+            ? $request->input('payment_status')
+            : null;
+        $registerYear = $request->filled('register_receipt_year') ? (int) $request->input('register_receipt_year') : null;
+        $renewalYear = $request->filled('renewal_receipt_year') ? (int) $request->input('renewal_receipt_year') : null;
+
+        // Register Receipts filter (year, plus status when chosen)
+        if ($registerYear) {
+            $query->whereHas('registrationReceipt', function ($r) use ($registerYear, $status) {
+                $r->where('receipt_year', $registerYear);
+                if ($status) {
+                    $r->where('status', $status);
                 }
             });
         }
 
-        // Renewal Receipts filter (Year with payment status)
-        if ($request->filled('renewal_receipt_year')) {
-            $query->whereHas('renewals', function ($renewalQuery) use ($request) {
-                $renewalQuery->where('renewal_year', (int) $request->input('renewal_receipt_year'));
-                if ($request->filled('payment_status')) {
-                    $renewalQuery->where('status', $request->input('payment_status'));
+        // Renewal Receipts filter (year, plus status when chosen)
+        if ($renewalYear) {
+            $query->whereHas('renewals', function ($r) use ($renewalYear, $status) {
+                $r->where('renewal_year', $renewalYear);
+                if ($status) {
+                    $r->where('status', $status);
                 }
             });
         }
 
-        // If ONLY payment_status is selected (no years), filter across both
-        if ($request->filled('payment_status') && !$request->filled('register_receipt_year') && !$request->filled('renewal_receipt_year')) {
-            $status = $request->input('payment_status');
+        // Status alone (no receipt year): match the registration receipt or any renewal.
+        // A Sangh with no registration receipt yet is shown as "Unpaid" on its page,
+        // so it counts as Unpaid here too.
+        if ($status && ! $registerYear && ! $renewalYear) {
             $query->where(function ($q) use ($status) {
-                $q->whereHas('registrationReceipt', function ($receiptQuery) use ($status) {
-                    $receiptQuery->where('status', $status);
-                })->orWhereHas('renewals', function ($renewalQuery) use ($status) {
-                    $renewalQuery->where('status', $status);
-                });
+                $q->whereHas('registrationReceipt', fn ($r) => $r->where('status', $status))
+                  ->orWhereHas('renewals', fn ($r) => $r->where('status', $status));
+                if ($status === 'unpaid') {
+                    $q->orWhereDoesntHave('registrationReceipt');
+                }
             });
         }
 
         return $query;
+    }
+
+    /** A Y-m-d filter date, or null when empty/invalid. */
+    private function parseFilterDate(mixed $value): ?\Carbon\Carbon
+    {
+        if (! is_string($value) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+
+        try {
+            $date = \Carbon\Carbon::createFromFormat('!Y-m-d', $value);
+
+            return $date && $date->format('Y-m-d') === $value ? $date : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     public function index(Request $request)
@@ -149,55 +222,25 @@ class SanghController extends Controller
         $query = Sangh::query();
         $this->applyFilters($query, $request);
 
-        // Calculate total members dynamically based on the filtered query BEFORE pagination
-        $totalMembers = (clone $query)->sum('total_members');
-
-        // Status counts for the index filter (unpaid, information_approved, sangh_registered); "paid" = approved or registered
-        $paidCount = (clone $query)->where(function ($q) use ($request) {
-            if ($request->filled('register_receipt_year')) {
-                $q->whereHas('registrationReceipt', fn($r) => $r->where('receipt_year', (int)$request->input('register_receipt_year'))->whereIn('status', ['information_approved', 'sangh_registered']));
-            } elseif ($request->filled('renewal_receipt_year')) {
-                $q->whereHas('renewals', fn($r) => $r->where('renewal_year', (int)$request->input('renewal_receipt_year'))->whereIn('status', ['information_approved', 'sangh_registered']));
-            } else {
-                $q->whereHas('registrationReceipt', fn($r) => $r->whereIn('status', ['information_approved', 'sangh_registered']))
-                  ->orWhereHas('renewals', fn($r) => $r->whereIn('status', ['information_approved', 'sangh_registered']));
-            }
-        })->count();
-
-        // Calculate Unpaid as Total minus Paid to ensure the math perfectly aligns for the user
-        $totalCount = (clone $query)->count();
-        $unpaidCount = $totalCount - $paidCount;
-
-        $infoApprovedCount = (clone $query)->where(function ($q) use ($request) {
-            if ($request->filled('register_receipt_year')) {
-                $q->whereHas('registrationReceipt', fn($r) => $r->where('receipt_year', (int)$request->input('register_receipt_year'))->where('status', 'information_approved'));
-            } elseif ($request->filled('renewal_receipt_year')) {
-                $q->whereHas('renewals', fn($r) => $r->where('renewal_year', (int)$request->input('renewal_receipt_year'))->where('status', 'information_approved'));
-            } else {
-                $q->whereHas('registrationReceipt', fn($r) => $r->where('status', 'information_approved'))
-                  ->orWhereHas('renewals', fn($r) => $r->where('status', 'information_approved'));
-            }
-        })->count();
-
-        $registeredCount = (clone $query)->where(function ($q) use ($request) {
-            if ($request->filled('register_receipt_year')) {
-                $q->whereHas('registrationReceipt', fn($r) => $r->where('receipt_year', (int)$request->input('register_receipt_year'))->where('status', 'sangh_registered'));
-            } elseif ($request->filled('renewal_receipt_year')) {
-                $q->whereHas('renewals', fn($r) => $r->where('renewal_year', (int)$request->input('renewal_receipt_year'))->where('status', 'sangh_registered'));
-            } else {
-                $q->whereHas('registrationReceipt', fn($r) => $r->where('status', 'sangh_registered'))
-                  ->orWhereHas('renewals', fn($r) => $r->where('status', 'sangh_registered'));
-            }
-        })->count();
-
         $sanghs = $query->orderBy('sangh_sr_no', 'asc')->paginate(15)->withQueryString();
 
-        // Get filter options from distinct data
-        $vibhags = Sangh::query()->whereNotNull('pradeshik_vibhag')->distinct()->orderBy('pradeshik_vibhag')->pluck('pradeshik_vibhag');
-        $districts = Sangh::query()->whereNotNull('district')->distinct()->orderBy('district')->pluck('district');
+        // Filter options come only from Sanghs this user can see, so a member is
+        // never offered a vibhag/district that can only return 0 results.
+        $visible = function () use ($request) {
+            $q = Sangh::query();
+            if (! $request->user()->hasRole('superadmin')) {
+                $userId = $request->user()->id;
+                $q->where(fn ($w) => $w->where('created_by', $userId)->orWhere('assigned_to', $userId));
+            }
+
+            return $q;
+        };
+
+        $vibhags = $visible()->whereNotNull('pradeshik_vibhag')->where('pradeshik_vibhag', '!=', '')->distinct()->orderBy('pradeshik_vibhag')->pluck('pradeshik_vibhag');
+        $districts = $visible()->whereNotNull('district')->where('district', '!=', '')->distinct()->orderBy('district')->pluck('district');
         $years = range((int) date('Y'), 1970);
-        
-        $vibhagDistricts = Sangh::query()
+
+        $vibhagDistricts = $visible()
             ->whereNotNull('pradeshik_vibhag')
             ->whereNotNull('district')
             ->select('pradeshik_vibhag', 'district')
@@ -210,7 +253,19 @@ class SanghController extends Controller
         $registerReceiptYears = SanghRegistrationReceipt::query()->distinct()->orderBy('receipt_year', 'desc')->pluck('receipt_year');
         $renewalReceiptYears = SanghRenewal::query()->distinct()->orderBy('renewal_year', 'desc')->pluck('renewal_year');
 
-        return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'vibhagDistricts', 'years', 'registerReceiptYears', 'renewalReceiptYears', 'totalMembers', 'unpaidCount', 'paidCount', 'infoApprovedCount', 'registeredCount'));
+        // Show "Pre-add Blank Sangh rows" only to superadmin, and only until it has been done.
+        $showPlaceholderSeeder = $request->user()->hasRole('superadmin') && Sangh::count() < self::PLACEHOLDER_TARGET;
+
+        // "Import by Sangh No." (superadmin): show the available number range and how many are blank.
+        $rangeImportInfo = $request->user()->hasRole('superadmin') ? [
+            'min' => (int) Sangh::query()->min('sangh_sr_no'),
+            'max' => (int) Sangh::query()->max('sangh_sr_no'),
+            'blank' => Sangh::query()->whereNotNull('sangh_sr_no')
+                ->where(fn ($q) => $q->whereNull('name_of_sangh')->orWhere('name_of_sangh', ''))
+                ->count(),
+        ] : null;
+
+        return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'vibhagDistricts', 'years', 'registerReceiptYears', 'renewalReceiptYears', 'showPlaceholderSeeder', 'rangeImportInfo'));
     }
 
     public function create()
@@ -250,10 +305,35 @@ class SanghController extends Controller
         }
     }
 
+    /**
+     * Validate the Sangh form, honouring the fields the admin locked for this user
+     * (Settings → Sangh Form Fields). Locked fields are dropped from validation, so
+     * anything submitted for them is ignored, and are filled with the stored value
+     * (edit) or left empty (create) — a locked field can never be changed.
+     */
+    private function validateSanghForm(Request $request, ?Sangh $sangh = null): array
+    {
+        $locked = SanghFormFields::lockedWithDependentsFor($request->user());
+
+        $validated = $request->validate(array_diff_key($this->rules($sangh === null), array_flip($locked)));
+
+        foreach ($locked as $field) {
+            $validated[$field] = $sangh?->getAttribute($field);
+        }
+
+        return $validated;
+    }
+
     public function store(Request $request)
     {
-        $validated = $request->validate($this->rules());
-        $this->assertMinimumMembers($validated);
+        $validated = $this->validateSanghForm($request);
+
+        // A user who can't edit the member counts can't satisfy the 25-member rule;
+        // the admin fills those in later.
+        $lockedFields = SanghFormFields::lockedFor($request->user());
+        if (! array_intersect(['male', 'female'], $lockedFields)) {
+            $this->assertMinimumMembers($validated);
+        }
         $allowAssignedTo = $request->user()->hasRole('superadmin');
 
         DB::transaction(function () use ($validated, $allowAssignedTo) {
@@ -290,62 +370,7 @@ class SanghController extends Controller
     {
         abort_unless($sangh->isVisibleTo($request->user()), 403);
 
-        $sangh->load(['creator', 'renewals', 'registrationReceipt']);
-
-        $registrationYear = $this->intOrNull($sangh->registration_year);
-
-        // Fees for the New register Sangh Receipt always follow the admin-configured
-        // sangh fee settings (standard fees + member-count slab) — never manually entered.
-        $maleForFee = $this->intOrNull($sangh->male);
-        $femaleForFee = $this->intOrNull($sangh->female);
-        $totalForFee = ($maleForFee === null && $femaleForFee === null)
-            ? null
-            : (($maleForFee ?? 0) + ($femaleForFee ?? 0));
-
-        $admissionFeeStd = (float) Setting::getValue('sangh_admission_fee', 0);
-        $annualFeeComputed = SanghFeeSlab::annualFeeForMemberCount($totalForFee) ?? 0;
-        $developmentFeeRate = (float) Setting::getValue('sangh_development_fee_rate', 0);
-        $developmentFeeComputed = $developmentFeeRate * ($totalForFee ?? 0);
-
-        // Dedicated registration receipt is stored in separate table.
-        $newRegisterReceipt = $sangh->registrationReceipt;
-        if (!$newRegisterReceipt && $registrationYear !== null) {
-            $newRegisterReceipt = new SanghRegistrationReceipt([
-                'sangh_id' => $sangh->id,
-                'receipt_year' => $registrationYear,
-                'is_paid' => false,
-            ]);
-        }
-
-        if ($newRegisterReceipt) {
-            // Always reflect the current fee-slab configuration, not whatever was last saved.
-            $newRegisterReceipt->admission_fee = $admissionFeeStd;
-            $newRegisterReceipt->annual_fee = $annualFeeComputed;
-            $newRegisterReceipt->development_fee = $developmentFeeComputed;
-        }
-
-        // Only show renewals that have been actively used (any meaningful data entered)
-        $allRenewals = $sangh->renewals;
-        $renewals = $allRenewals->filter(function ($r) {
-            return $r->is_paid
-                || $r->feskcom_receipt_no !== null
-                || $r->feskcom_receipt_date !== null
-                || $r->annual_fee !== null
-                || $r->development_fee !== null
-                || $r->penalty_fee !== null
-                || $r->paid_amount !== null
-                || $r->male_members !== null
-                || $r->female_members !== null
-                || $r->total_members !== null;
-        })->sortByDesc('renewal_year');
-
-        // Available years = all years 1970→current that don't already have a visible record
-        $usedYears = $renewals->pluck('renewal_year')->all();
-        $currentYear = (int) date('Y');
-        $availableYears = array_values(array_filter(
-            range($currentYear, 1970),
-            fn($y) => !in_array($y, $usedYears, true)
-        ));
+        $sangh->load(['creator']);
 
         // Quick prev/next navigation between sangh records (ordered by sr. no., same as the
         // listing). sangh_sr_no is nullable (unregistered sanghs have none yet), so comparisons
@@ -370,7 +395,101 @@ class SanghController extends Controller
             ->orderBy('id')
             ->first(['id']);
 
-        return view('sanghs.show', compact('sangh', 'renewals', 'availableYears', 'newRegisterReceipt', 'registrationYear', 'prevSangh', 'nextSangh'));
+        $receiptCount = $this->receiptData($sangh)['receiptCount'];
+
+        return view('sanghs.show', compact('sangh', 'prevSangh', 'nextSangh', 'receiptCount'));
+    }
+
+    /** Separate Receipts page for one Sangh: Registered / Renewal / Backdated, in one table. */
+    public function receipts(Request $request, Sangh $sangh)
+    {
+        abort_unless($sangh->isVisibleTo($request->user()), 403);
+
+        return view('sanghs.receipts', array_merge(['sangh' => $sangh], $this->receiptData($sangh)));
+    }
+
+    /**
+     * Everything the Receipts page needs: the registration receipt (with fees always
+     * following the current fee settings), renewals with data, and which years each
+     * "create" tab may offer.
+     */
+    private function receiptData(Sangh $sangh): array
+    {
+        $sangh->load(['renewals', 'registrationReceipt']);
+        $registrationYear = $this->intOrNull($sangh->registration_year);
+
+        // Fees for the New register Sangh Receipt always follow the admin-configured
+        // sangh fee settings (standard fees + member-count slab) — never manually entered.
+        $maleForFee = $this->intOrNull($sangh->male);
+        $femaleForFee = $this->intOrNull($sangh->female);
+        $totalForFee = ($maleForFee === null && $femaleForFee === null)
+            ? null
+            : (($maleForFee ?? 0) + ($femaleForFee ?? 0));
+
+        $newRegisterReceipt = $sangh->registrationReceipt;
+        if (! $newRegisterReceipt && $registrationYear !== null) {
+            $newRegisterReceipt = new SanghRegistrationReceipt([
+                'sangh_id' => $sangh->id,
+                'receipt_year' => $registrationYear,
+                'is_paid' => false,
+            ]);
+        }
+
+        if ($newRegisterReceipt) {
+            // Always reflect the current fee-slab configuration, not whatever was last saved.
+            $newRegisterReceipt->admission_fee = (float) Setting::getValue('sangh_admission_fee', 0);
+            $newRegisterReceipt->annual_fee = SanghFeeSlab::annualFeeForMemberCount($totalForFee) ?? 0;
+            $newRegisterReceipt->development_fee = (float) Setting::getValue('sangh_development_fee_rate', 0) * ($totalForFee ?? 0);
+        }
+
+        // Only renewals that have been actively used (any meaningful data entered)
+        $renewals = $this->visibleRenewals($sangh)->sortByDesc('renewal_year');
+
+        // Which year each tab may create (same rules enforced in createRenewal()).
+        [$nextRenewalYear, $backdatedYears] = $this->receiptYearOptions($sangh, $renewals);
+
+        $receiptCount = $renewals->count() + ($newRegisterReceipt ? 1 : 0);
+
+        return compact('registrationYear', 'newRegisterReceipt', 'renewals', 'nextRenewalYear', 'backdatedYears', 'receiptCount');
+    }
+
+    /** Oldest year a backdated receipt may be created for. */
+    public const FIRST_RECEIPT_YEAR = 1969;
+
+    /**
+     * Years the Receipts section may create for this Sangh:
+     *  - Renewal: only the NEXT year — one after the latest renewal (or after the
+     *    registration receipt year when there are no renewals yet), at most next year.
+     *  - Backdated: any PAST year from 1969 to last year without a receipt (never the current year).
+     *
+     * @return array{0: ?int, 1: int[]}
+     */
+    private function receiptYearOptions(Sangh $sangh, $visibleRenewals): array
+    {
+        $currentYear = (int) date('Y');
+        $usedYears = $visibleRenewals->pluck('renewal_year')->map(fn ($y) => (int) $y)->all();
+
+        $base = $usedYears ? max($usedYears)
+            : ($sangh->registrationReceipt?->receipt_year ?? $this->intOrNull($sangh->registration_year) ?? ($currentYear - 1));
+        $next = (int) $base + 1;
+        $nextRenewalYear = ($next <= $currentYear + 1 && ! in_array($next, $usedYears, true)) ? $next : null;
+
+        $backdatedYears = array_values(array_filter(
+            range($currentYear - 1, self::FIRST_RECEIPT_YEAR),
+            fn ($y) => ! in_array($y, $usedYears, true)
+        ));
+
+        return [$nextRenewalYear, $backdatedYears];
+    }
+
+    /** Renewals that have real data (blank auto-created stubs are ignored). */
+    private function visibleRenewals(Sangh $sangh)
+    {
+        return $sangh->renewals()->get()->filter(fn ($r) => $r->is_paid
+            || $r->feskcom_receipt_no !== null || $r->feskcom_receipt_date !== null
+            || $r->annual_fee !== null || $r->development_fee !== null || $r->penalty_fee !== null
+            || $r->paid_amount !== null || $r->male_members !== null || $r->female_members !== null
+            || $r->total_members !== null);
     }
 
     public function updateRegistrationReceipt(Request $request, Sangh $sangh)
@@ -387,6 +506,43 @@ class SanghController extends Controller
             'cheque_date' => 'nullable|date',
         ]);
 
+        $this->saveRegistrationReceipt($sangh, $validated);
+
+        return redirect()->route('sanghs.receipts', $sangh)->with('success', 'Registered receipt updated.');
+    }
+
+    /** Map a status label or code (screen / Excel) to the stored code. */
+    private function statusCode(mixed $value): string
+    {
+        $v = str_replace([' ', '-'], '_', strtolower(trim((string) $value)));
+
+        return match ($v) {
+            'sangh_registered', 'registered' => 'sangh_registered',
+            'information_approved', 'approved', 'paid' => 'information_approved', // "Paid" = old files
+            default => 'unpaid',
+        };
+    }
+
+    /** Human label for a status code (what screens and Excel show). */
+    private function statusLabel(?string $code): string
+    {
+        return match ($code) {
+            'sangh_registered' => 'Sangh Registered',
+            'information_approved', 'paid' => 'Information approved',
+            default => 'Unpaid',
+        };
+    }
+
+    /**
+     * Save the New register Sangh receipt — the same rules for the screen and Excel import:
+     * fees from Settings → Sangh Fees and the Sangh's members; a receipt date makes it
+     * "Information approved"; receipt no. FSNEW/{id} is assigned once; "Sangh Registered"
+     * records the registered date and assigns the Sangh numbering.
+     * $data: status, feskcom_receipt_date, penalty_fee, paid_amount, bank_name, cheque_no,
+     * cheque_date — and from import only: feskcom_receipt_no, registered_at.
+     */
+    private function saveRegistrationReceipt(Sangh $sangh, array $data): SanghRegistrationReceipt
+    {
         $maleMembers = $this->intOrNull($sangh->male);
         $femaleMembers = $this->intOrNull($sangh->female);
         $totalMembers = ($maleMembers === null && $femaleMembers === null)
@@ -397,8 +553,7 @@ class SanghController extends Controller
         // always derived from the admin-configured sangh fee settings/slabs.
         $admissionFee = (float) Setting::getValue('sangh_admission_fee', 0);
         $annualFee = SanghFeeSlab::annualFeeForMemberCount($totalMembers) ?? 0;
-        $developmentFeeRate = (float) Setting::getValue('sangh_development_fee_rate', 0);
-        $developmentFee = $developmentFeeRate * ($totalMembers ?? 0);
+        $developmentFee = (float) Setting::getValue('sangh_development_fee_rate', 0) * ($totalMembers ?? 0);
 
         $year = $this->intOrNull($sangh->registration_year) ?? (int) date('Y');
 
@@ -407,25 +562,31 @@ class SanghController extends Controller
             ['receipt_year' => $year, 'is_paid' => false, 'status' => 'unpaid']
         );
 
-        // Entering the receipt date marks it "Information approved" (counts as paid) and auto-assigns the receipt number (once, never overwritten)
-        $hasReceiptDate = !empty($validated['feskcom_receipt_date']);
-        $status = $validated['status'];
+        $hasReceiptDate = ! empty($data['feskcom_receipt_date']);
+        $status = $data['status'] ?? 'unpaid';
         if ($hasReceiptDate && $status === 'unpaid') {
             $status = 'information_approved';
         }
-        $isPaid = in_array($status, ['paid', 'information_approved', 'sangh_registered']);
 
-        if (empty($receipt->feskcom_receipt_no) && $hasReceiptDate) {
+        // Receipt number: an imported one is kept; otherwise auto-assigned once, never overwritten.
+        if (! empty($data['feskcom_receipt_no'])) {
+            $receipt->feskcom_receipt_no = (string) $data['feskcom_receipt_no'];
+        } elseif (empty($receipt->feskcom_receipt_no) && $hasReceiptDate) {
             $receipt->feskcom_receipt_no = 'FSNEW/' . $receipt->id;
-            $receipt->save();
         }
 
+        // संघ नोंदणी दिनांक: kept from the first time it became "Sangh Registered"; cleared if moved back.
+        $registeredAt = $status === 'sangh_registered'
+            ? (($data['registered_at'] ?? null) ?: ($receipt->registered_at ?? now()->toDateString()))
+            : null;
+
         $receipt->update([
+            'registered_at' => $registeredAt,
             'receipt_year' => $year,
-            'is_paid' => $isPaid,
+            'is_paid' => in_array($status, ['information_approved', 'sangh_registered'], true),
             'status' => $status,
             'feskcom_receipt_no' => $receipt->feskcom_receipt_no,
-            'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
+            'feskcom_receipt_date' => $data['feskcom_receipt_date'] ?? null,
             'user_id' => auth()->id(),
             'male_members' => $maleMembers,
             'female_members' => $femaleMembers,
@@ -433,25 +594,103 @@ class SanghController extends Controller
             'annual_fee' => $annualFee,
             'admission_fee' => $admissionFee,
             'development_fee' => $developmentFee,
-            'penalty_fee' => $validated['penalty_fee'] ?? null,
-            'paid_amount' => $validated['paid_amount'] ?? null,
-            'bank_name' => $validated['bank_name'] ?? null,
-            'cheque_no' => $validated['cheque_no'] ?? null,
-            'cheque_date' => $validated['cheque_date'] ?? null,
+            'penalty_fee' => $data['penalty_fee'] ?? null,
+            'paid_amount' => $data['paid_amount'] ?? null,
+            'bank_name' => $data['bank_name'] ?? null,
+            'cheque_no' => $data['cheque_no'] ?? null,
+            'cheque_date' => $data['cheque_date'] ?? null,
         ]);
 
+        $this->assignNumberingIfRegistered($sangh, $status);
+
+        return $receipt;
+    }
+
+    /**
+     * Save a Renewal / Backdated receipt — the same rules for the screen and Excel import:
+     * fees from Settings → Sangh Fees for the member count; receipt no. FSREN/{id} assigned
+     * once; a receipt date → "Information approved"; "Sangh Registered" records the
+     * registered date and assigns the Sangh numbering.
+     * $data: status, feskcom_receipt_date, male_members, female_members, penalty_fee,
+     * paid_amount, bank_name, cheque_no, cheque_date — import only: feskcom_receipt_no,
+     * registered_at, is_backdated.
+     */
+    private function saveRenewal(Sangh $sangh, int $year, array $data): SanghRenewal
+    {
+        $maleMembers = $data['male_members'] ?? null;
+        $femaleMembers = $data['female_members'] ?? null;
+        $totalMembers = ($maleMembers === null && $femaleMembers === null)
+            ? null
+            : (($maleMembers ?? 0) + ($femaleMembers ?? 0));
+
+        // वार्षिक शुल्क / विकास निधी शुल्क are never entered manually —
+        // always derived from the admin-configured sangh fee settings/slabs.
+        $annualFee = SanghFeeSlab::annualFeeForMemberCount($totalMembers) ?? 0;
+        $developmentFee = (float) Setting::getValue('sangh_development_fee_rate', 0) * ($totalMembers ?? 0);
+
+        $renewal = SanghRenewal::query()->firstOrCreate(
+            ['sangh_id' => $sangh->id, 'renewal_year' => $year],
+            ['is_paid' => false, 'status' => 'unpaid', 'is_backdated' => (bool) ($data['is_backdated'] ?? false)]
+        );
+
+        // Receipt number: an imported one is kept; otherwise auto-assigned once, never overwritten.
+        if (! empty($data['feskcom_receipt_no'])) {
+            $renewal->feskcom_receipt_no = (string) $data['feskcom_receipt_no'];
+        } elseif (empty($renewal->feskcom_receipt_no)) {
+            $renewal->feskcom_receipt_no = 'FSREN/' . $renewal->id;
+        }
+
+        $hasReceiptDate = ! empty($data['feskcom_receipt_date']);
+        $status = $data['status'] ?? 'unpaid';
+        if ($hasReceiptDate && $status === 'unpaid') {
+            $status = 'information_approved';
+        }
+
+        // संघ नोंदणी दिनांक: kept from the first time it became "Sangh Registered"; cleared if moved back.
+        $registeredAt = $status === 'sangh_registered'
+            ? (($data['registered_at'] ?? null) ?: ($renewal->registered_at ?? now()->toDateString()))
+            : null;
+
+        $attributes = [
+            'registered_at' => $registeredAt,
+            'is_paid' => in_array($status, ['information_approved', 'sangh_registered'], true),
+            'status' => $status,
+            'feskcom_receipt_no' => $renewal->feskcom_receipt_no,
+            'feskcom_receipt_date' => $data['feskcom_receipt_date'] ?? null,
+            'user_id' => auth()->id(),
+            'male_members' => $maleMembers,
+            'female_members' => $femaleMembers,
+            'total_members' => $totalMembers,
+            'annual_fee' => $annualFee,
+            'development_fee' => $developmentFee,
+            'penalty_fee' => $data['penalty_fee'] ?? null,
+            'paid_amount' => $data['paid_amount'] ?? null,
+            'bank_name' => $data['bank_name'] ?? null,
+            'cheque_no' => $data['cheque_no'] ?? null,
+            'cheque_date' => $data['cheque_date'] ?? null,
+        ];
+        if (array_key_exists('is_backdated', $data)) {
+            $attributes['is_backdated'] = (bool) $data['is_backdated'];
+        }
+        $renewal->update($attributes);
+
+        $this->assignNumberingIfRegistered($sangh, $status);
+
+        return $renewal;
+    }
+
+    /** Sangh numbering is assigned once, the first time any receipt becomes "Sangh Registered". */
+    private function assignNumberingIfRegistered(Sangh $sangh, string $status): void
+    {
         if ($status === 'sangh_registered' && $sangh->sangh_sr_no === null) {
-            $numbering = $this->makeNumbering(
+            $sangh->update($this->makeNumbering(
                 $sangh->pradeshik_vibhag,
                 $sangh->district,
                 $sangh->category_code,
                 $sangh->sangh_type_code,
                 $sangh->created_date
-            );
-            $sangh->update($numbering);
+            ));
         }
-
-        return redirect()->route('sanghs.show', $sangh)->with('success', 'New register Sangh receipt updated.');
     }
 
 
@@ -459,7 +698,7 @@ class SanghController extends Controller
     {
         abort_unless($sangh->isManageableBy($request->user()), 403);
 
-        $validated = $request->validate($this->rules(false));
+        $validated = $this->validateSanghForm($request, $sangh);
         // Minimum-25-members is only enforced at initial registration (store()), not on
         // every subsequent edit — federations often digitize records in stages (name/address
         // captured first, headcount confirmed later), and placeholder/legacy rows shouldn't
@@ -494,244 +733,573 @@ class SanghController extends Controller
 
     public function exportExcel(\Illuminate\Http\Request $request)
     {
-        $query = Sangh::query()->with('renewals');
+        // Renewals sheet follows the filter too: with a renewal year chosen, only that
+        // year's renewals (and, with a status, only renewals in that status).
+        $renewalYear = $request->filled('renewal_receipt_year') ? (int) $request->input('renewal_receipt_year') : null;
+        $status = in_array($request->input('payment_status'), ['unpaid', 'information_approved', 'sangh_registered'], true)
+            ? $request->input('payment_status') : null;
+        $query = Sangh::query()->with(['registrationReceipt', 'renewals' => function ($r) use ($renewalYear, $status) {
+            if ($renewalYear) {
+                $r->where('renewal_year', $renewalYear);
+                if ($status) {
+                    $r->where('status', $status);
+                }
+            }
+            $r->orderBy('renewal_year');
+        }]);
         $this->applyFilters($query, $request);
-        $sanghs = $query->orderBy('sangh_sr_no')->get();
+        $sanghs = $query->orderBy('sangh_sr_no')->orderBy('id')->get();
 
-        $masterRows = $sanghs->map(function (Sangh $s) {
-            return [
-                $s->unique_ref_no,
-                $s->pradeshik_ref_no,
-                $s->district_ref_no,
-                $s->registration_year,
-                $s->name_of_sangh,
-                $s->category_code,
-                $s->sangh_type_code,
-                $s->pradeshik_vibhag,
-                $s->district,
-                $s->taluka,
-                $s->village,
-                $s->city,
-                $s->mukkam_post,
-                $s->pincode,
-                $s->address,
-                $s->road_path,
-                $s->ward_section,
-                $s->male,
-                $s->female,
-                $s->total_members,
-                $s->pradeshik_admission_fee,
-                $s->pradeshik_annual_fee,
-                $s->pradeshik_development_fee,
-                $s->president,
-                $s->president_phone,
-                $s->president_whatsapp,
-                $s->president_email,
-                $s->secretary,
-                $s->secretary_phone,
-                $s->secretary_whatsapp,
-                $s->secretary_email,
-            ];
-        })->values()->all();
-
+        $masterRows = [];
+        $registrationRows = [];
         $renewalRows = [];
         foreach ($sanghs as $s) {
-            foreach ($s->renewals as $renewal) {
-                $renewalRows[] = [
-                    $s->unique_ref_no,
-                    $renewal->renewal_year,
-                    $renewal->feskcom_receipt_no,
-                    optional($renewal->feskcom_receipt_date)->format('Y-m-d'),
-                    $renewal->male_members,
-                    $renewal->female_members,
-                    $renewal->total_members,
-                    $renewal->annual_fee,
-                    $renewal->development_fee,
-                    $renewal->penalty_fee,
-                    $renewal->paid_amount,
-                    $renewal->is_paid ? 'Paid' : 'Unpaid',
-                ];
+            $masterRows[] = $this->rowFor(self::IMPORT_HEADERS, $this->masterValues($s));
+
+            if ($rc = $s->registrationReceipt) {
+                $total = (float) $rc->admission_fee + (float) $rc->annual_fee + (float) $rc->development_fee;
+                $registrationRows[] = $this->rowFor(self::REGISTRATION_HEADERS, $this->receiptLinkValues($s) + [
+                    'वर्ष' => $rc->receipt_year,
+                    'स्थिती' => $this->statusLabel($rc->status),
+                    'फेस्कॉम पावती क्र.' => $rc->feskcom_receipt_no,
+                    'फेस्कॉम पावती दिनांक' => optional($rc->feskcom_receipt_date)->format('Y-m-d'),
+                    'संघ नोंदणी दिनांक' => optional($rc->registered_at)->format('Y-m-d'),
+                    'पुरुष सभासद संख्या' => $rc->male_members,
+                    'महिला सभासद संख्या' => $rc->female_members,
+                    'एकूण सभासद संख्या' => $rc->total_members,
+                    'प्रवेश शुल्क' => $rc->admission_fee,
+                    'वार्षिक शुल्क' => $rc->annual_fee,
+                    'विकास निधी शुल्क' => $rc->development_fee,
+                    'एकूण रक्कम' => $total,
+                    'पावती रक्कम (भरलेली)' => $rc->paid_amount,
+                    'बाकी रक्कम' => $total - (float) $rc->paid_amount,
+                    'बँकेचे नाव' => $rc->bank_name,
+                    'चेक क्रमांक' => $rc->cheque_no,
+                    'चेक दिनांक' => optional($rc->cheque_date)->format('Y-m-d'),
+                ]);
+            }
+
+            foreach ($s->renewals as $rn) {
+                $total = (float) $rn->annual_fee + (float) $rn->development_fee + (float) $rn->penalty_fee;
+                $renewalRows[] = $this->rowFor(self::RENEWAL_HEADERS, $this->receiptLinkValues($s) + [
+                    'वर्ष' => $rn->renewal_year,
+                    'प्रकार' => $rn->is_backdated ? 'Backdated' : 'Renewal',
+                    'स्थिती' => $this->statusLabel($rn->status),
+                    'फेस्कॉम पावती क्र.' => $rn->feskcom_receipt_no,
+                    'फेस्कॉम पावती दिनांक' => optional($rn->feskcom_receipt_date)->format('Y-m-d'),
+                    'संघ नोंदणी दिनांक' => optional($rn->registered_at)->format('Y-m-d'),
+                    'पुरुष सभासद संख्या' => $rn->male_members,
+                    'महिला सभासद संख्या' => $rn->female_members,
+                    'एकूण सभासद संख्या' => $rn->total_members,
+                    'वार्षिक शुल्क' => $rn->annual_fee,
+                    'विकास निधी शुल्क' => $rn->development_fee,
+                    'दंड शुल्क' => $rn->penalty_fee,
+                    'एकूण रक्कम' => $total,
+                    'पावती रक्कम (भरलेली)' => $rn->paid_amount,
+                    'बाकी रक्कम' => $total - (float) $rn->paid_amount,
+                    'बँकेचे नाव' => $rn->bank_name,
+                    'चेक क्रमांक' => $rn->cheque_no,
+                    'चेक दिनांक' => optional($rn->cheque_date)->format('Y-m-d'),
+                ]);
             }
         }
 
-        $export = new \App\Exports\SanghWorkbookExport(
-            self::IMPORT_HEADERS,
-            $masterRows,
-            self::RENEWAL_HEADERS,
-            $renewalRows
-        );
+        $export = new \App\Exports\SanghWorkbookExport([
+            [self::SHEET_MASTER, self::IMPORT_HEADERS, $masterRows],
+            [self::SHEET_REGISTRATION, self::REGISTRATION_HEADERS, $registrationRows],
+            [self::SHEET_RENEWALS, self::RENEWAL_HEADERS, $renewalRows],
+        ]);
 
         return Excel::download($export, 'sangh_export_' . now()->format('Ymd_His') . '.xlsx');
     }
 
+    /** One row in header order from a [header => value] map (missing headers → empty). */
+    private function rowFor(array $headers, array $values): array
+    {
+        return array_map(fn ($h) => $values[$h] ?? null, $headers);
+    }
+
+    /** All Sangh Master columns for one Sangh, keyed by header. */
+    private function masterValues(Sangh $s): array
+    {
+        return [
+            self::ID_HEADER => $s->id,
+            'Sangh Sr. No.' => $s->sangh_sr_no,
+            'Unique संघाचा अनु क्र.' => $s->unique_ref_no,
+            'प्रादेशिक विभागातील संघाचा अनु क्र.' => $s->pradeshik_ref_no,
+            'जिल्हा मधे संघाचा अनु. क्र.' => $s->district_ref_no,
+            'वर्ष' => $s->registration_year,
+            'संघाचे नाव' => $s->name_of_sangh,
+            'श्रेणी' => $s->category_code,
+            'संघ प्रकार' => $s->sangh_type_code,
+            'प्रादेशिक विभाग' => $s->pradeshik_vibhag,
+            'जिल्हा' => $s->district,
+            'तालुका' => $s->taluka,
+            'गाव' => $s->village,
+            'शहर' => $s->city,
+            'मुक्काम पोस्ट' => $s->mukkam_post,
+            'पिनकोड' => $s->pincode,
+            'पत्ता' => $s->address,
+            'रस्ता / पथ' => $s->road_path,
+            'विभाग/प्रभाग' => $s->ward_section,
+            'पुरुष सभासद संख्या' => $s->male,
+            'महिला सभासद संख्या' => $s->female,
+            'एकूण सभासद संख्या' => $s->total_members,
+            'प्रादेशिक प्रवेश शुल्क' => $s->pradeshik_admission_fee,
+            'प्रादेशिक वार्षिक शुल्क' => $s->pradeshik_annual_fee,
+            'प्रादेशिक विकास निधी शुल्क' => $s->pradeshik_development_fee,
+            'अध्यक्ष' => $s->president,
+            'अध्यक्ष मोबाईल' => $s->president_phone,
+            'अध्यक्ष व्हॉट्सअप' => $s->president_whatsapp,
+            'अध्यक्ष इमेल' => $s->president_email,
+            'सचिव' => $s->secretary,
+            'सचिव मोबाईल' => $s->secretary_phone,
+            'सचिव व्हॉट्सअप' => $s->secretary_whatsapp,
+            'सचिव इमेल' => $s->secretary_email,
+            'फॉर्म तयार केल्याची तारीख' => $s->created_date ? \Carbon\Carbon::parse($s->created_date)->format('Y-m-d') : optional($s->created_at)->format('Y-m-d'),
+        ];
+    }
+
+    /** Columns that link a receipt row back to its Sangh. */
+    private function receiptLinkValues(Sangh $s): array
+    {
+        return [
+            self::ID_HEADER => $s->id,
+            'Unique संघाचा अनु क्र.' => $s->unique_ref_no,
+            'संघाचे नाव' => $s->name_of_sangh,
+        ];
+    }
+
+    /**
+     * Import a Sangh workbook (same layout as Export / Template):
+     *  - "Sangh Master": updates the Sangh with that Sangh ID (or Unique number), else creates it.
+     *    Numbering in the file is kept for new Sanghs; otherwise it is assigned on registration.
+     *  - "Registration Receipts" and "Renewals": saved with the same rules as the Receipts page.
+     * Old two-sheet files (Master + Renewals with Paid/Unpaid) still import.
+     * All or nothing: any problem → nothing is saved and the rows are listed.
+     */
     public function importExcel(Request $request)
     {
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls,csv',
         ]);
 
-        $file = $request->file('excel_file');
-        $spreadsheet = IOFactory::load($file->getRealPath());
-        $sheets = [];
-        foreach ($spreadsheet->getAllSheets() as $sheet) {
-            $sheets[] = $sheet->toArray(null, true, true, false);
+        $book = IOFactory::load($request->file('excel_file')->getRealPath());
+        $sheetRows = fn ($sheet) => $sheet ? $sheet->toArray(null, true, true, false) : [];
+        $byTitle = [];
+        foreach ($book->getAllSheets() as $sheet) {
+            $byTitle[mb_strtolower(trim($sheet->getTitle()))] = $sheet;
         }
+        $masterRows = $sheetRows($byTitle[mb_strtolower(self::SHEET_MASTER)] ?? $book->getSheet(0));
+        $registrationRows = $sheetRows($byTitle[mb_strtolower(self::SHEET_REGISTRATION)] ?? null);
+        // Old files: second sheet = renewals.
+        $renewalRows = $sheetRows($byTitle[mb_strtolower(self::SHEET_RENEWALS)]
+            ?? (! isset($byTitle[mb_strtolower(self::SHEET_REGISTRATION)]) && $book->getSheetCount() > 1 ? $book->getSheet(1) : null));
 
-        $masterRows = $sheets[0] ?? [];
-        $renewalRows = $sheets[1] ?? [];
-
-        if (count($masterRows) < 2) {
+        if (count($masterRows) < 2 && count($registrationRows) < 2 && count($renewalRows) < 2) {
             return back()->with('error', 'Excel file has no data rows.');
         }
 
-        $masterHeader = array_map('trim', $masterRows[0]);
-        $importErrors = [];
+        $errors = [];
+        $counts = ['created' => 0, 'updated' => 0, 'registration' => 0, 'renewal' => 0];
+        $byName = []; // Sanghs touched in this file, by name — links receipt rows of brand-new Sanghs
 
-        DB::transaction(function () use ($masterRows, $masterHeader, $renewalRows, &$importErrors) {
-            for ($i = 1; $i < count($masterRows); $i++) {
-                $row = $masterRows[$i];
-                if (!count(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
-                    continue;
+        try {
+            DB::transaction(function () use ($masterRows, $registrationRows, $renewalRows, &$errors, &$counts, &$byName) {
+                // ---------- Sangh Master ----------
+                foreach ($this->dataRows($masterRows) as [$line, $mapped]) {
+                    $attributes = $this->sanghAttributesFromImportRow($mapped);
+                    if ($attributes['name_of_sangh'] === '') {
+                        $errors[] = self::SHEET_MASTER . " row {$line}: संघाचे नाव is required.";
+                        continue;
+                    }
+
+                    $sangh = $this->findImportSangh($mapped, false);
+                    if ($sangh && ! $sangh->isManageableBy(auth()->user())) {
+                        $errors[] = self::SHEET_MASTER . " row {$line}: you can only update your own / assigned Sanghs.";
+                        continue;
+                    }
+                    if ($sangh) {
+                        // Existing Sangh: update details, never touch its issued numbering.
+                        $sangh->update($attributes);
+                        $counts['updated']++;
+                    } else {
+                        // New Sangh: keep numbering given in the file (historic records);
+                        // otherwise it is assigned when the Sangh is registered.
+                        $numbering = array_filter([
+                            'sangh_sr_no' => $this->intOrNull($mapped['Sangh Sr. No.'] ?? null),
+                            'unique_ref_no' => trim((string) ($mapped['Unique संघाचा अनु क्र.'] ?? '')) ?: null,
+                            'pradeshik_ref_no' => trim((string) ($mapped['प्रादेशिक विभागातील संघाचा अनु क्र.'] ?? '')) ?: null,
+                            'district_ref_no' => trim((string) ($mapped['जिल्हा मधे संघाचा अनु. क्र.'] ?? '')) ?: null,
+                        ], fn ($v) => $v !== null);
+                        if (isset($numbering['sangh_sr_no']) && Sangh::where('sangh_sr_no', $numbering['sangh_sr_no'])->exists()) {
+                            $errors[] = self::SHEET_MASTER . " row {$line}: Sangh Sr. No. {$numbering['sangh_sr_no']} already belongs to another Sangh.";
+                            continue;
+                        }
+                        $sangh = Sangh::create($attributes + $numbering + [
+                            'created_by' => Auth::id(),
+                            'created_date' => now(),
+                            'pradeshik_vibhag_code' => $this->normalizeCode($attributes['pradeshik_vibhag']),
+                            'district_code' => $this->normalizeCode($attributes['district']),
+                        ]);
+                        $counts['created']++;
+                    }
+                    $byName[$this->nameKey($sangh->name_of_sangh)] = $sangh;
                 }
 
-                $mapped = $this->mapRowByHeader($masterHeader, $row);
-                $name = trim((string) ($mapped['संघाचे नाव'] ?? ''));
-
-                if ($name === '') {
-                    $importErrors[] = 'Row ' . ($i + 1) . ': संघाचे नाव required. Skipped.';
-                    continue;
+                // ---------- Registration Receipts ----------
+                foreach ($this->dataRows($registrationRows) as [$line, $mapped]) {
+                    $sangh = $this->findImportSangh($mapped, true, $byName);
+                    if (! $sangh || ! $sangh->isManageableBy(auth()->user())) {
+                        $errors[] = self::SHEET_REGISTRATION . " row {$line}: " . (! $sangh ? 'Sangh not found (check Sangh ID / Unique number / संघाचे नाव).' : 'you can only update your own / assigned Sanghs.');
+                        continue;
+                    }
+                    $this->saveRegistrationReceipt($sangh->refresh(), $this->receiptDataFromImportRow($mapped));
+                    $counts['registration']++;
                 }
 
-                $pradeshikVibhag = $mapped['प्रादेशिक विभाग'] ?? null;
-                $district = $mapped['जिल्हा'] ?? null;
-
-                // If the row carries a unique ref no that already exists, this is a
-                // re-import of a previously-exported (and possibly registered) sangh —
-                // update it in place rather than creating a duplicate, and never touch
-                // its already-issued official numbering.
-                $existingRefNo = trim((string) ($mapped['Unique संघाचा अनु क्र.'] ?? ''));
-                $existingSangh = $existingRefNo !== '' ? Sangh::where('unique_ref_no', $existingRefNo)->first() : null;
-
-                $numbering = $existingSangh ? [] : $this->makeNumbering(
-                    $pradeshikVibhag,
-                    $district,
-                    $this->codeChar($mapped['श्रेणी'] ?? null),
-                    $this->codeChar($mapped['संघ प्रकार'] ?? null)
-                );
-
-                $attributes = array_merge([
-                    'name_of_sangh' => $name,
-                    'registration_year' => $this->intOrNull($mapped['वर्ष'] ?? null),
-                    'category_code' => $this->codeChar($mapped['श्रेणी'] ?? null),
-                    'sangh_type_code' => $this->codeChar($mapped['संघ प्रकार'] ?? null),
-                    'pradeshik_vibhag' => $pradeshikVibhag,
-                    'district' => $district,
-                    'taluka' => $mapped['तालुका'] ?? null,
-                    'village' => $mapped['गाव'] ?? null,
-                    'city' => $mapped['शहर'] ?? null,
-                    'mukkam_post' => $mapped['मुक्काम पोस्ट'] ?? null,
-                    'pincode' => $mapped['पिनकोड'] ?? null,
-                    'address' => $mapped['पत्ता'] ?? null,
-                    'road_path' => $mapped['रस्ता / पथ'] ?? null,
-                    'ward_section' => $mapped['विभाग/प्रभाग'] ?? null,
-                    'male' => $this->intOrNull($mapped['पुरुष सभासद संख्या'] ?? null),
-                    'female' => $this->intOrNull($mapped['महिला सभासद संख्या'] ?? null),
-                    'total_members' => $this->intOrNull($mapped['एकूण सभासद संख्या'] ?? null),
-                    'pradeshik_admission_fee' => $this->decimalOrNull($mapped['प्रादेशिक प्रवेश शुल्क'] ?? null),
-                    'pradeshik_annual_fee' => $this->decimalOrNull($mapped['प्रादेशिक वार्षिक शुल्क'] ?? null),
-                    'pradeshik_development_fee' => $this->decimalOrNull($mapped['प्रादेशिक विकास निधी शुल्क'] ?? null),
-                    'president' => $mapped['अध्यक्ष'] ?? null,
-                    'president_phone' => $mapped['अध्यक्ष मोबाईल'] ?? null,
-                    'president_whatsapp' => $mapped['अध्यक्ष व्हॉट्सअप'] ?? null,
-                    'president_email' => $mapped['अध्यक्ष इमेल'] ?? null,
-                    'secretary' => $mapped['सचिव'] ?? null,
-                    'secretary_phone' => $mapped['सचिव मोबाईल'] ?? null,
-                    'secretary_whatsapp' => $mapped['सचिव व्हॉट्सअप'] ?? null,
-                    'secretary_email' => $mapped['सचिव इमेल'] ?? null,
-                ], $numbering);
-
-                if ($existingSangh) {
-                    $existingSangh->update($attributes);
-                    $sangh = $existingSangh;
-                } else {
-                    $sangh = Sangh::create(array_merge($attributes, [
-                        'created_by' => Auth::id(),
-                        'created_date' => now(),
-                    ]));
+                // ---------- Renewals (Renewal + Backdated) ----------
+                foreach ($this->dataRows($renewalRows) as [$line, $mapped]) {
+                    $sangh = $this->findImportSangh($mapped, true, $byName);
+                    $year = $this->intOrNull($mapped['वर्ष'] ?? null);
+                    if (! $sangh || $year === null || ! $sangh->isManageableBy(auth()->user())) {
+                        $errors[] = self::SHEET_RENEWALS . " row {$line}: " . (! $sangh ? 'Sangh not found (check Sangh ID / Unique number / संघाचे नाव).'
+                            : ($year === null ? 'वर्ष is required.' : 'you can only update your own / assigned Sanghs.'));
+                        continue;
+                    }
+                    if ($year < self::FIRST_RECEIPT_YEAR || $year > (int) date('Y') + 1) {
+                        $errors[] = self::SHEET_RENEWALS . " row {$line}: वर्ष {$year} is outside " . self::FIRST_RECEIPT_YEAR . '–' . ((int) date('Y') + 1) . '.';
+                        continue;
+                    }
+                    $data = $this->receiptDataFromImportRow($mapped) + [
+                        'male_members' => $this->intOrNull($mapped['पुरुष सभासद संख्या'] ?? null),
+                        'female_members' => $this->intOrNull($mapped['महिला सभासद संख्या'] ?? null),
+                    ];
+                    if (isset($mapped['प्रकार'])) {
+                        $data['is_backdated'] = mb_strtolower(trim((string) $mapped['प्रकार'])) === 'backdated';
+                    }
+                    $this->saveRenewal($sangh->refresh(), $year, $data);
+                    $counts['renewal']++;
                 }
 
-                $this->ensureRenewalsForSangh($sangh);
+                if ($errors) {
+                    throw new \RuntimeException('import-errors'); // roll everything back
+                }
+            });
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() !== 'import-errors') {
+                throw $e;
             }
 
-            $this->importRenewals($renewalRows);
-        });
-
-        if (!empty($importErrors)) {
             return redirect()->route('sanghs.index')
-                ->with('import_errors', $importErrors)
-                ->with('success', 'Import completed with skipped rows.');
+                ->with('error', 'Nothing was imported. Please fix the rows below and upload again.')
+                ->with('import_errors', array_slice($errors, 0, 30));
         }
 
-        return redirect()->route('sanghs.index')->with('success', 'Excel imported successfully.');
+        return redirect()->route('sanghs.index')->with('success', sprintf(
+            'Excel imported: %d Sangh(s) created, %d updated, %d registration receipt(s), %d renewal/backdated receipt(s).',
+            $counts['created'], $counts['updated'], $counts['registration'], $counts['renewal']
+        ));
+    }
+
+    /** Non-empty data rows of a sheet as [Excel row number, row mapped by header]. */
+    private function dataRows(array $rows): array
+    {
+        if (count($rows) < 2) {
+            return [];
+        }
+        $header = array_map(fn ($h) => trim((string) $h), $rows[0]);
+        $out = [];
+        for ($i = 1; $i < count($rows); $i++) {
+            if (count(array_filter($rows[$i], fn ($v) => $v !== null && trim((string) $v) !== ''))) {
+                $out[] = [$i + 1, $this->mapRowByHeader($header, $rows[$i])];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The Sangh a row belongs to: Sangh ID, then Unique number, then — for receipt
+     * rows only — a Sangh with that exact name from this file (or one unique match).
+     */
+    private function findImportSangh(array $mapped, bool $allowName, array $byName = []): ?Sangh
+    {
+        $id = $this->intOrNull($mapped[self::ID_HEADER] ?? null);
+        if ($id && ($sangh = Sangh::find($id))) {
+            return $sangh;
+        }
+        $ref = trim((string) ($mapped['Unique संघाचा अनु क्र.'] ?? ''));
+        if ($ref !== '' && ($sangh = Sangh::where('unique_ref_no', $ref)->first())) {
+            return $sangh;
+        }
+        if ($allowName) {
+            $key = $this->nameKey($mapped['संघाचे नाव'] ?? '');
+            if ($key !== '' && isset($byName[$key])) {
+                return $byName[$key];
+            }
+            if ($key !== '') {
+                // Name match only among Sanghs this user can see.
+                $matches = Sangh::query()->visibleTo(auth()->user())
+                    ->where('name_of_sangh', trim((string) $mapped['संघाचे नाव']))->limit(2)->get();
+                if ($matches->count() === 1) {
+                    return $matches->first();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function nameKey(mixed $name): string
+    {
+        return mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $name)));
+    }
+
+    /** Receipt fields shared by the Registration and Renewals sheets (fees are calculated, not read). */
+    private function receiptDataFromImportRow(array $mapped): array
+    {
+        return [
+            'status' => $this->statusCode($mapped['स्थिती'] ?? ''),
+            'feskcom_receipt_no' => trim((string) ($mapped['फेस्कॉम पावती क्र.'] ?? '')) ?: null,
+            'feskcom_receipt_date' => $this->importDate($mapped['फेस्कॉम पावती दिनांक'] ?? null),
+            'registered_at' => $this->importDate($mapped['संघ नोंदणी दिनांक'] ?? null),
+            'penalty_fee' => $this->intOrNull($mapped['दंड शुल्क'] ?? null),
+            'paid_amount' => is_numeric($mapped['पावती रक्कम (भरलेली)'] ?? null) ? (int) round((float) $mapped['पावती रक्कम (भरलेली)']) : null,
+            'bank_name' => trim((string) ($mapped['बँकेचे नाव'] ?? '')) ?: null,
+            'cheque_no' => trim((string) ($mapped['चेक क्रमांक'] ?? '')) ?: null,
+            'cheque_date' => $this->importDate($mapped['चेक दिनांक'] ?? null),
+        ];
+    }
+
+    /** Excel date cell → Y-m-d. Accepts 2026-11-05, 05-11-2026, 05/11/2026 or an Excel date number. */
+    private function importDate(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+        $value = trim((string) $value);
+        if (is_numeric($value) && (float) $value > 20000 && (float) $value < 80000) {
+            return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $value)->format('Y-m-d');
+        }
+        foreach (['Y-m-d', 'd-m-Y', 'd/m/Y', 'Y/m/d', 'd.m.Y', 'm/d/Y'] as $format) {
+            $d = \DateTime::createFromFormat('!' . $format, $value);
+            if ($d && $d->format($format) === $value) {
+                return $d->format('Y-m-d');
+            }
+        }
+        try {
+            return \Carbon\Carbon::parse($value)->format('Y-m-d');
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Sangh fields from one Excel row (template columns, already mapped by header).
+     * Shared by the normal Import and the "Fill Blank Rows" import.
+     */
+    private function sanghAttributesFromImportRow(array $mapped): array
+    {
+        // एकूण सभासद = पुरुष + महिला (as on the form) — a stale total column in Excel is ignored.
+        $male = $this->intOrNull($mapped['पुरुष सभासद संख्या'] ?? null);
+        $female = $this->intOrNull($mapped['महिला सभासद संख्या'] ?? null);
+        $total = ($male === null && $female === null)
+            ? $this->intOrNull($mapped['एकूण सभासद संख्या'] ?? null)
+            : ($male ?? 0) + ($female ?? 0);
+
+        return [
+            'name_of_sangh' => trim((string) ($mapped['संघाचे नाव'] ?? '')),
+            'registration_year' => $this->intOrNull($mapped['वर्ष'] ?? null),
+            'category_code' => $this->codeChar($mapped['श्रेणी'] ?? null),
+            'sangh_type_code' => $this->codeChar($mapped['संघ प्रकार'] ?? null),
+            'pradeshik_vibhag' => $mapped['प्रादेशिक विभाग'] ?? null,
+            'district' => $mapped['जिल्हा'] ?? null,
+            'taluka' => $mapped['तालुका'] ?? null,
+            'village' => $mapped['गाव'] ?? null,
+            'city' => $mapped['शहर'] ?? null,
+            'mukkam_post' => $mapped['मुक्काम पोस्ट'] ?? null,
+            'pincode' => $mapped['पिनकोड'] ?? null,
+            'address' => $mapped['पत्ता'] ?? null,
+            'road_path' => $mapped['रस्ता / पथ'] ?? null,
+            'ward_section' => $mapped['विभाग/प्रभाग'] ?? null,
+            'male' => $this->intOrNull($mapped['पुरुष सभासद संख्या'] ?? null),
+            'female' => $this->intOrNull($mapped['महिला सभासद संख्या'] ?? null),
+            'total_members' => $total,
+            'pradeshik_admission_fee' => $this->decimalOrNull($mapped['प्रादेशिक प्रवेश शुल्क'] ?? null),
+            'pradeshik_annual_fee' => $this->decimalOrNull($mapped['प्रादेशिक वार्षिक शुल्क'] ?? null),
+            'pradeshik_development_fee' => $this->decimalOrNull($mapped['प्रादेशिक विकास निधी शुल्क'] ?? null),
+            'president' => $mapped['अध्यक्ष'] ?? null,
+            'president_phone' => $mapped['अध्यक्ष मोबाईल'] ?? null,
+            'president_whatsapp' => $mapped['अध्यक्ष व्हॉट्सअप'] ?? null,
+            'president_email' => $mapped['अध्यक्ष इमेल'] ?? null,
+            'secretary' => $mapped['सचिव'] ?? null,
+            'secretary_phone' => $mapped['सचिव मोबाईल'] ?? null,
+            'secretary_whatsapp' => $mapped['सचिव व्हॉट्सअप'] ?? null,
+            'secretary_email' => $mapped['सचिव इमेल'] ?? null,
+        ];
+    }
+
+    /**
+     * Import into a range of existing Sanghs by Sangh No. (blank placeholder rows
+     * or already-filled ones): Excel data row 1 → Sangh No. "from", row 2 → from+1, …
+     * Each Sangh keeps its number. Filled Sanghs are only updated when the user ticks
+     * "overwrite", and an empty Excel cell keeps the current value. All-or-nothing:
+     * if the row count doesn't match the range, a number doesn't exist, a row has no
+     * name, or filled Sanghs are in range without "overwrite", nothing is saved.
+     */
+    public function importByRange(Request $request)
+    {
+        $request->validate([
+            'from_no' => 'required|integer|min:1',
+            'to_no' => 'required|integer|gte:from_no',
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv',
+            'overwrite' => 'nullable|boolean',
+        ], [
+            'to_no.gte' => '"To Sangh No." must be the same as or after "From Sangh No.".',
+        ]);
+
+        $from = (int) $request->input('from_no');
+        $to = (int) $request->input('to_no');
+        $expected = $to - $from + 1;
+        $overwrite = $request->boolean('overwrite');
+        $fail = fn (string $message, array $details = []) => back()->withInput()
+            ->with('error', $message)->with('import_errors', $details)->with('open_range_import', true);
+
+        if ($expected > 2000) {
+            return $fail('Please fill at most 2000 Sanghs per upload.');
+        }
+
+        // Read the first sheet; keep non-empty data rows with their Excel row number.
+        $sheet = IOFactory::load($request->file('excel_file')->getRealPath())->getSheet(0)->toArray(null, true, true, false);
+        $header = array_map(fn ($h) => trim((string) $h), $sheet[0] ?? []);
+        if (! in_array('संघाचे नाव', $header, true)) {
+            return $fail('This Excel file is not in the Sangh template format (column "संघाचे नाव" not found). Download the Template and use that.');
+        }
+
+        $rows = [];
+        for ($i = 1; $i < count($sheet); $i++) {
+            if (count(array_filter($sheet[$i], fn ($v) => $v !== null && trim((string) $v) !== ''))) {
+                $rows[] = ['excel_row' => $i + 1, 'mapped' => $this->mapRowByHeader($header, $sheet[$i])];
+            }
+        }
+
+        if (count($rows) !== $expected) {
+            return $fail("Sangh No. {$from} to {$to} is {$expected} Sangh(s), but the Excel file has " . count($rows) . ' data row(s). They must match exactly.');
+        }
+
+        // Every number in the range must exist; filled ones need "overwrite" ticked.
+        $targets = Sangh::query()->whereBetween('sangh_sr_no', [$from, $to])->get()->keyBy('sangh_sr_no');
+        $problems = [];
+        $filledCount = 0;
+        for ($no = $from; $no <= $to; $no++) {
+            $sangh = $targets->get($no);
+            if (! $sangh) {
+                $problems[] = "Sangh No. {$no} does not exist.";
+            } elseif (trim((string) $sangh->name_of_sangh) !== '') {
+                $filledCount++;
+                if (! $overwrite) {
+                    $problems[] = "Sangh No. {$no} already has data (\"{$sangh->name_of_sangh}\"). Tick \"Also update Sanghs that already have data\" to update it.";
+                }
+            }
+        }
+        foreach ($rows as $row) {
+            if (trim((string) ($row['mapped']['संघाचे नाव'] ?? '')) === '') {
+                $problems[] = "Excel row {$row['excel_row']}: संघाचे नाव is empty.";
+            }
+        }
+        if ($problems) {
+            return $fail('Nothing was imported. Please fix the following and upload again:', array_slice($problems, 0, 25)
+                + (count($problems) > 25 ? [25 => '…and ' . (count($problems) - 25) . ' more.'] : []));
+        }
+
+        DB::transaction(function () use ($rows, $targets, $from) {
+            foreach ($rows as $index => $row) {
+                $sangh = $targets->get($from + $index);
+                // Empty Excel cells keep the Sangh's current value.
+                $attributes = array_filter(
+                    $this->sanghAttributesFromImportRow($row['mapped']),
+                    fn ($v) => $v !== null && $v !== ''
+                );
+                // Sangh No. and its reference numbers stay as they are; only the short
+                // vibhag/district codes follow the imported vibhag/district.
+                if (isset($attributes['pradeshik_vibhag'])) {
+                    $attributes['pradeshik_vibhag_code'] = $this->normalizeCode($attributes['pradeshik_vibhag']);
+                }
+                if (isset($attributes['district'])) {
+                    $attributes['district_code'] = $this->normalizeCode($attributes['district']);
+                }
+                // Keep the total in step when only one of male/female is given.
+                if (isset($attributes['male']) || isset($attributes['female'])) {
+                    $attributes['total_members'] = ($attributes['male'] ?? $sangh->male ?? 0) + ($attributes['female'] ?? $sangh->female ?? 0);
+                }
+                $sangh->update($attributes);
+            }
+        });
+
+        $blankCount = $expected - $filledCount;
+
+        return redirect()->route('sanghs.index')->with('success',
+            "Imported Sangh No. {$from} to {$to}: {$blankCount} blank Sangh(s) filled, {$filledCount} existing Sangh(s) updated.");
     }
 
     public function downloadTemplate()
     {
-        $sampleMaster = [[
-            '',
-            'MM/1',
-            'MO/1',
-            date('Y'),
-            'दत्तात्रय ज्ये.ना.सं',
-            'R',
-            'G',
-            'Mumbai Metropolitan',
-            'Mumbai',
-            'Taluka Name',
-            'Village Name',
-            'Mumbai',
-            'Mukkam Post',
-            '400001',
-            '402/A, Building Name',
-            'Main Road',
-            'Ward 3',
-            25,
-            22,
-            47,
-            5000,
-            6000,
-            2000,
-            'President Name',
-            '9000000001',
-            '9000000001',
-            'president@example.com',
-            'Secretary Name',
-            '9000000002',
-            '9000000002',
-            'secretary@example.com',
-        ]];
+        $year = (int) date('Y');
+        // Sangh ID is left blank for new Sanghs; rows link to their Sangh by संघाचे नाव
+        // (receipt sheets) when there is no ID or Unique number yet.
+        $master = $this->rowFor(self::IMPORT_HEADERS, [
+            'वर्ष' => $year,
+            'संघाचे नाव' => 'दत्तात्रय ज्ये.ना.सं',
+            'श्रेणी' => 'R',
+            'संघ प्रकार' => 'G',
+            'प्रादेशिक विभाग' => 'मुंबई',
+            'जिल्हा' => 'मुंबई सिटी',
+            'तालुका' => 'Taluka Name',
+            'गाव' => 'Village Name',
+            'शहर' => 'Mumbai',
+            'मुक्काम पोस्ट' => 'Mukkam Post',
+            'पिनकोड' => '400001',
+            'पत्ता' => '402/A, Building Name',
+            'रस्ता / पथ' => 'Main Road',
+            'विभाग/प्रभाग' => 'Ward 3',
+            'पुरुष सभासद संख्या' => 25,
+            'महिला सभासद संख्या' => 22,
+            'अध्यक्ष' => 'President Name',
+            'अध्यक्ष मोबाईल' => '9000000001',
+            'अध्यक्ष व्हॉट्सअप' => '9000000001',
+            'अध्यक्ष इमेल' => 'president@example.com',
+            'सचिव' => 'Secretary Name',
+            'सचिव मोबाईल' => '9000000002',
+            'सचिव व्हॉट्सअप' => '9000000002',
+            'सचिव इमेल' => 'secretary@example.com',
+        ]);
 
-        $sampleRenewal = [[
-            'MM/1',
-            date('Y'),
-            'FES-001',
-            now()->format('Y-m-d'),
-            25,
-            22,
-            47,
-            500,
-            250,
-            0,
-            750,
-            'Paid',
-        ]];
+        $registration = $this->rowFor(self::REGISTRATION_HEADERS, [
+            'संघाचे नाव' => 'दत्तात्रय ज्ये.ना.सं',
+            'वर्ष' => $year,
+            'स्थिती' => 'Information approved',
+            'फेस्कॉम पावती दिनांक' => now()->format('Y-m-d'),
+            'पावती रक्कम (भरलेली)' => 300,
+            'बँकेचे नाव' => 'Bank Name',
+        ]);
 
-        $export = new \App\Exports\SanghWorkbookExport(
-            self::IMPORT_HEADERS,
-            $sampleMaster,
-            self::RENEWAL_HEADERS,
-            $sampleRenewal
-        );
+        $renewal = $this->rowFor(self::RENEWAL_HEADERS, [
+            'संघाचे नाव' => 'दत्तात्रय ज्ये.ना.सं',
+            'वर्ष' => $year - 1,
+            'प्रकार' => 'Backdated',
+            'स्थिती' => 'Unpaid',
+            'पुरुष सभासद संख्या' => 25,
+            'महिला सभासद संख्या' => 22,
+            'दंड शुल्क' => 0,
+            'पावती रक्कम (भरलेली)' => 0,
+        ]);
+
+        $export = new \App\Exports\SanghWorkbookExport([
+            [self::SHEET_MASTER, self::IMPORT_HEADERS, [$master]],
+            [self::SHEET_REGISTRATION, self::REGISTRATION_HEADERS, [$registration]],
+            [self::SHEET_RENEWALS, self::RENEWAL_HEADERS, [$renewal]],
+        ]);
 
         return Excel::download($export, 'sangh_template.xlsx');
     }
@@ -821,7 +1389,7 @@ class SanghController extends Controller
             ->first();
 
         if (!$renewal || !$renewal->is_paid) {
-            return redirect()->route('sanghs.show', $sangh)->with('error', 'Receipt not available or not paid.');
+            return redirect()->route('sanghs.receipts', $sangh)->with('error', 'Receipt not available or not paid.');
         }
 
         $pdf = app('dompdf.wrapper');
@@ -837,9 +1405,20 @@ class SanghController extends Controller
         abort_unless($sangh->isManageableBy($request->user()), 403);
 
         $request->validate([
-            'renewal_year' => ['required', 'integer', 'min:1970', 'max:' . (int) date('Y')],
+            'renewal_year' => ['required', 'integer', 'min:' . self::FIRST_RECEIPT_YEAR, 'max:' . ((int) date('Y') + 1)],
+            'receipt_type' => ['nullable', 'in:renewal,backdated'],
         ]);
         $year = (int) $request->input('renewal_year');
+        $isBackdated = $request->input('receipt_type') === 'backdated';
+
+        // Same rules the Receipts tabs show: Renewal = next year only; Backdated = 1969…this year, unused.
+        [$nextRenewalYear, $backdatedYears] = $this->receiptYearOptions($sangh, $this->visibleRenewals($sangh));
+        $allowed = $isBackdated ? in_array($year, $backdatedYears, true) : $year === $nextRenewalYear;
+        if (! $allowed) {
+            return redirect()->route('sanghs.receipts', $sangh)->with('error', $isBackdated
+                ? "A receipt for {$year} already exists or the year is not allowed (" . self::FIRST_RECEIPT_YEAR . '–' . ((int) date('Y') - 1) . ').'
+                : 'Renewal can only be created for the next year' . ($nextRenewalYear ? " ({$nextRenewalYear})." : ' — none is due right now.'));
+        }
         $maleMembers = $this->intOrNull($sangh->male);
         $femaleMembers = $this->intOrNull($sangh->female);
         $totalMembers = ($maleMembers === null && $femaleMembers === null)
@@ -860,12 +1439,14 @@ class SanghController extends Controller
             ['sangh_id' => $sangh->id, 'renewal_year' => $year],
             [
                 'is_paid' => false,
+                'is_backdated' => $isBackdated,
                 'male_members' => $maleMembers,
                 'female_members' => $femaleMembers,
                 'total_members' => $totalMembers,
             ]
         );
-        return redirect()->route('sanghs.show', $sangh)->with('success', "Year {$year} renewal record created.");
+        return redirect()->route('sanghs.receipts', $sangh)->with('success',
+            ($isBackdated ? 'Backdated' : 'Renewal') . " receipt for {$year} created.");
     }
 
     public function destroyRenewal(Request $request, Sangh $sangh, int $year)
@@ -876,7 +1457,7 @@ class SanghController extends Controller
             ->where('sangh_id', $sangh->id)
             ->where('renewal_year', $year)
             ->delete();
-        return redirect()->route('sanghs.show', $sangh)->with('success', "Year {$year} renewal record deleted.");
+        return redirect()->route('sanghs.receipts', $sangh)->with('success', "Receipt for {$year} deleted.");
     }
 
     public function updateRenewal(Request $request, Sangh $sangh, int $year)
@@ -895,71 +1476,17 @@ class SanghController extends Controller
             'cheque_date' => 'nullable|date',
         ]);
 
-        $maleMembers = $validated['male_members'] ?? null;
-        $femaleMembers = $validated['female_members'] ?? null;
-        $totalMembers = ($maleMembers === null && $femaleMembers === null)
-            ? null
-            : (($maleMembers ?? 0) + ($femaleMembers ?? 0));
+        $this->saveRenewal($sangh, $year, $validated);
 
-        // वार्षिक शुल्क / विकास निधी शुल्क are never entered manually —
-        // always derived from the admin-configured sangh fee settings/slabs.
-        $annualFee = SanghFeeSlab::annualFeeForMemberCount($totalMembers) ?? 0;
-        $developmentFeeRate = (float) Setting::getValue('sangh_development_fee_rate', 0);
-        $developmentFee = $developmentFeeRate * ($totalMembers ?? 0);
-
-        $renewal = SanghRenewal::query()->firstOrCreate(
-            ['sangh_id' => $sangh->id, 'renewal_year' => $year],
-            ['is_paid' => false, 'status' => 'unpaid']
-        );
-
-        // Auto-assign receipt number once, never overwrite
-        if (empty($renewal->feskcom_receipt_no)) {
-            $renewal->feskcom_receipt_no = 'FSREN/' . $renewal->id;
-            $renewal->save();
-        }
-
-        $hasReceiptDate = !empty($validated['feskcom_receipt_date']);
-        $status = $validated['status'];
-        if ($hasReceiptDate && $status === 'unpaid') {
-            $status = 'information_approved';
-        }
-        $isPaid = in_array($status, ['paid', 'information_approved', 'sangh_registered']);
-
-        $renewal->update([
-            'is_paid' => $isPaid,
-            'status' => $status,
-            'feskcom_receipt_no' => $renewal->feskcom_receipt_no,
-            'feskcom_receipt_date' => $validated['feskcom_receipt_date'] ?? null,
-            'user_id' => auth()->id(),
-            'male_members' => $maleMembers,
-            'female_members' => $femaleMembers,
-            'total_members' => $totalMembers,
-            'annual_fee' => $annualFee,
-            'development_fee' => $developmentFee,
-            'penalty_fee' => $validated['penalty_fee'] ?? null,
-            'paid_amount' => $validated['paid_amount'] ?? null,
-            'bank_name' => $validated['bank_name'] ?? null,
-            'cheque_no' => $validated['cheque_no'] ?? null,
-            'cheque_date' => $validated['cheque_date'] ?? null,
-        ]);
-
-        if ($status === 'sangh_registered' && $sangh->sangh_sr_no === null) {
-            $numbering = $this->makeNumbering(
-                $sangh->pradeshik_vibhag,
-                $sangh->district,
-                $sangh->category_code,
-                $sangh->sangh_type_code,
-                $sangh->created_date
-            );
-            $sangh->update($numbering);
-        }
-
-        return redirect()->route('sanghs.show', $sangh)->with('success', 'Renewal updated.');
+        return redirect()->route('sanghs.receipts', $sangh)->with('success', 'Receipt updated.');
     }
+
+    /** Placeholder rows are pre-added up to this Sangh count (one-time setup). */
+    public const PLACEHOLDER_TARGET = 6676;
 
     public function seedPlaceholders()
     {
-        $target = 6676;
+        $target = self::PLACEHOLDER_TARGET;
         $currentCount = Sangh::count();
 
         if ($currentCount >= $target) {
@@ -983,7 +1510,7 @@ class SanghController extends Controller
             }
         });
 
-        return redirect()->route('sanghs.index')->with('success', 'Placeholder Sangh rows added till 6676.');
+        return redirect()->route('sanghs.index')->with('success', 'Placeholder Sangh rows added till ' . $target . '.');
     }
 
     private function rules(bool $isCreate = true): array
@@ -1143,7 +1670,8 @@ class SanghController extends Controller
     {
         $mapped = [];
         foreach ($header as $index => $head) {
-            $mapped[trim((string) $head)] = $row[$index] ?? null;
+            // Excel cells may hold Marathi digits (२५); store English digits (25).
+            $mapped[trim((string) $head)] = Digits::toEnglish($row[$index] ?? null);
         }
         return $mapped;
     }
@@ -1166,47 +1694,4 @@ class SanghController extends Controller
         return strtoupper(Str::substr(trim((string) $value), 0, 1));
     }
 
-    private function importRenewals(array $renewalRows): void
-    {
-        if (count($renewalRows) < 2) {
-            return;
-        }
-
-        $header = array_map('trim', $renewalRows[0]);
-        for ($i = 1; $i < count($renewalRows); $i++) {
-            $row = $renewalRows[$i];
-            if (!count(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
-                continue;
-            }
-
-            $mapped = $this->mapRowByHeader($header, $row);
-            $uniqueRef = trim((string) ($mapped['Unique संघाचा अनु क्र.'] ?? ''));
-            $year = $this->intOrNull($mapped['वर्ष'] ?? null);
-
-            if ($uniqueRef === '' || $year === null) {
-                continue;
-            }
-
-            $sangh = Sangh::query()->where('unique_ref_no', $uniqueRef)->first();
-            if (!$sangh) {
-                continue;
-            }
-
-            SanghRenewal::query()->updateOrCreate(
-                ['sangh_id' => $sangh->id, 'renewal_year' => $year],
-                [
-                    'is_paid' => strtolower((string) ($mapped['स्थिती'] ?? '')) === 'paid',
-                    'feskcom_receipt_no' => $mapped['फेस्कॉम पावती क्र.'] ?? null,
-                    'feskcom_receipt_date' => $mapped['फेस्कॉम पावती दिनांक'] ?? null,
-                    'male_members' => $this->intOrNull($mapped['पुरुष सभासद संख्या'] ?? null),
-                    'female_members' => $this->intOrNull($mapped['महिला सभासद संख्या'] ?? null),
-                    'total_members' => $this->intOrNull($mapped['एकूण सभासद संख्या'] ?? null),
-                    'annual_fee' => is_numeric($mapped['वार्षिक शुल्क'] ?? null) ? $mapped['वार्षिक शुल्क'] : null,
-                    'development_fee' => is_numeric($mapped['विकास निधी शुल्क'] ?? null) ? $mapped['विकास निधी शुल्क'] : null,
-                    'penalty_fee' => is_numeric($mapped['दंड शुल्क'] ?? null) ? $mapped['दंड शुल्क'] : null,
-                    'paid_amount' => is_numeric($mapped['पावती रक्कम (भरलेली)'] ?? null) ? $mapped['पावती रक्कम (भरलेली)'] : null,
-                ]
-            );
-        }
-    }
 }

@@ -36,6 +36,12 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    // locked_sangh_fields is deliberately not fillable: only the superadmin
+    // Settings screen may set it (see SettingController::updateSanghFields).
+    protected $casts = [
+        'locked_sangh_fields' => 'array',
+    ];
+
     /**
      * User ↔ Roles (Many to Many)
      */

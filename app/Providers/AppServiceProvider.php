@@ -56,6 +56,7 @@ class AppServiceProvider extends ServiceProvider
 
         $year = (int) $year;
 
-        return $year . '-' . ($year - 1);
+        // Smaller year first, e.g. 2025 → "2024-2025".
+        return ($year - 1) . '-' . $year;
     }
 }

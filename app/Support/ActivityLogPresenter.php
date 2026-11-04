@@ -134,6 +134,7 @@ class ActivityLogPresenter
         'email' => 'Email',
         'phone' => 'Phone',
         'designation' => 'Designation',
+        'locked_sangh_fields' => 'Locked Sangh form fields',
 
         // Files, folders, groups, chat, meetings, links
         'folder_id' => 'Folder',
@@ -311,6 +312,12 @@ class ActivityLogPresenter
     {
         if ($value === null || $value === '') {
             return '';
+        }
+
+        if ($field === 'locked_sangh_fields') {
+            $fields = is_array($value) ? $value : (array) json_decode((string) $value, true);
+
+            return implode(', ', array_map([SanghFormFields::class, 'label'], $fields));
         }
 
         if (is_array($value)) {

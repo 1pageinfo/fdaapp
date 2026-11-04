@@ -5,27 +5,33 @@
     
     <!-- Page Header -->
     <div class="page-header mb-4">
-        <div class="row align-items-center">
-            <div class="col-md-8">
+        <div class="row align-items-center g-3">
+            <div class="col-xl-4 col-lg-12">
                 <h2 class="page-title mb-1">
                     <i class="fa fa-sitemap text-primary"></i> Sangh Management
                 </h2>
                 <p class="text-muted mb-0 page-subtitle">Manage and view all Sangh records</p>
             </div>
-            <div class="col-md-4 text-end">
-                <div class="btn-group header-actions" role="group">
-                    <a href="{{ route('sanghs.create') }}" class="btn btn-sm btn-primary">
+            <div class="col-xl-8 col-lg-12">
+                {{-- Separate buttons (not a btn-group) so they wrap as whole buttons, never mid-label --}}
+                <div class="header-actions d-flex flex-wrap align-items-center justify-content-xl-end">
+                    <a href="{{ route('sanghs.create') }}" class="btn btn-primary" data-perm="sanghs.create">
                         <i class="fa fa-plus"></i> Create New
                     </a>
-                    <a href="{{ route('sanghs.export', request()->query()) }}" class="btn btn-sm btn-outline-secondary">
+                    <a href="{{ route('sanghs.export', request()->query()) }}" class="btn btn-outline-secondary">
                         <i class="fa fa-download"></i> Export
                     </a>
-                    <a href="{{ route('sanghs.template') }}" class="btn btn-sm btn-outline-info">
-                        <i class="fa fa-file-excel"></i> Template
+                    <a href="{{ route('sanghs.template') }}" class="btn btn-outline-info" data-perm="sanghs.create">
+                        <i class="fa fa-file-excel-o"></i> Template
                     </a>
-                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#importModal">
+                    <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#importModal" data-perm="sanghs.create">
                         <i class="fa fa-upload"></i> Import
                     </button>
+                    @if($rangeImportInfo)
+                        <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#rangeImportModal">
+                            <i class="fa fa-sort-numeric-asc"></i> Import by Sangh No.
+                        </button>
+                    @endif
                 </div>
             </div>
         </div>
@@ -156,30 +162,19 @@
     <div class="row mb-3">
         <div class="col-12">
             <div class="d-flex flex-wrap gap-2 align-items-center">
-                <form action="{{ route('sanghs.seed_placeholders') }}" method="POST" onsubmit="return confirm('Add placeholder rows up to 6676?');" style="display: inline;" class="me-2">
+                {{-- One-time setup: hidden once the placeholder rows exist. --}}
+                @if($showPlaceholderSeeder)
+                <form action="{{ route('sanghs.seed_placeholders') }}" method="POST" onsubmit="return confirm('Add placeholder rows up to {{ \App\Http\Controllers\SanghController::PLACEHOLDER_TARGET }}?');" style="display: inline;" class="me-2">
                     @csrf
                     <button class="btn btn-warning btn-sm shadow-sm">
                         <i class="fa fa-plus-square me-1"></i> Pre-add Blank Sangh rows
                     </button>
                 </form>
+                @endif
                 
+                {{-- Number of Sanghs matching the current filters --}}
                 <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
-                    <span class="text-secondary fw-semibold">Total Records: <strong class="text-dark">{{ $sanghs->total() }}</strong></span>
-                </div>
-                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center bg-light">
-                    <span class="text-secondary fw-semibold">Total Members: <strong class="text-dark" style="font-size: 1.1em;">{{ number_format($totalMembers) }}</strong></span>
-                </div>
-                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
-                    <span class="text-secondary fw-semibold">Unpaid: <strong class="text-danger">{{ number_format($unpaidCount) }}</strong></span>
-                </div>
-                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
-                    <span class="text-secondary fw-semibold">Paid: <strong class="text-success">{{ number_format($paidCount) }}</strong></span>
-                </div>
-                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
-                    <span class="text-secondary fw-semibold">Approved: <strong class="text-info">{{ number_format($infoApprovedCount) }}</strong></span>
-                </div>
-                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
-                    <span class="text-secondary fw-semibold">Registered: <strong class="text-primary">{{ number_format($registeredCount) }}</strong></span>
+                    <span class="text-secondary fw-semibold">Total Sangh Found: <strong class="text-dark" style="font-size: 1.1em;">{{ number_format($sanghs->total()) }}</strong></span>
                 </div>
             </div>
         </div>
@@ -226,10 +221,10 @@
                                     <a href="{{ route('sanghs.show', $s) }}" class="btn btn-outline-info" title="View">
                                         <i class="fa fa-eye"></i> View
                                     </a>
-                                    <a href="{{ route('sanghs.edit', $s) }}" class="btn btn-outline-primary" title="Edit">
+                                    <a href="{{ route('sanghs.edit', $s) }}" class="btn btn-outline-primary" title="Edit" data-perm="sanghs.edit">
                                         <i class="fa fa-edit"></i> Edit
                                     </a>
-                                    <form action="{{ route('sanghs.destroy', $s) }}" method="POST" style="display: inline;" onsubmit="return confirm('Delete this Sangh?');">
+                                    <form action="{{ route('sanghs.destroy', $s) }}" method="POST" style="display: inline;" data-perm="sanghs.delete" onsubmit="return confirm('Delete this Sangh?');">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete">
@@ -276,15 +271,12 @@
             <!-- Center: Go to Page -->
             <div class="col-md-4 text-center">
                 <form class="d-flex align-items-center justify-content-center gap-2" method="GET" action="{{ route('sanghs.index') }}">
-                    <!-- Preserve all filter parameters -->
-                    <input type="hidden" name="pradeshik_vibhag" value="{{ request('pradeshik_vibhag') }}">
-                    <input type="hidden" name="district" value="{{ request('district') }}">
-                    <input type="hidden" name="month" value="{{ request('month') }}">
-                    <input type="hidden" name="year" value="{{ request('year') }}">
-                    <input type="hidden" name="from_date" value="{{ request('from_date') }}">
-                    <input type="hidden" name="to_date" value="{{ request('to_date') }}">
-                    <input type="hidden" name="renewal_year" value="{{ request('renewal_year') }}">
-                    <input type="hidden" name="payment_status" value="{{ request('payment_status') }}">
+                    <!-- Preserve every active filter when jumping to a page -->
+                    @foreach(request()->except('page') as $filterKey => $filterValue)
+                        @if(is_scalar($filterValue) && $filterValue !== '')
+                            <input type="hidden" name="{{ $filterKey }}" value="{{ $filterValue }}">
+                        @endif
+                    @endforeach
                     
                     <label class="mb-0 fw-bold"><i class="fa fa-arrow-right"></i> Go to:</label>
                     <input type="number" name="page" min="1" max="{{ $sanghs->lastPage() }}" class="form-control" style="width: 70px;" placeholder="#" required>
@@ -362,9 +354,20 @@
             font-size: 0.95rem;
         }
 
+        .header-actions {
+            gap: 0.5rem;
+        }
+
         .header-actions .btn {
-            padding: 0.45rem 0.85rem;
-            font-size: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            line-height: 1.2;
+            white-space: nowrap;      /* labels never break onto several lines */
+            border-radius: 8px;
+            margin: 0;
         }
 
         .header-actions .btn i {
@@ -375,9 +378,13 @@
             .page-title {
                 font-size: 1.8rem;
             }
+        }
 
-            .header-actions {
-                margin-top: 0.75rem;
+        @media (max-width: 576px) {
+            /* Phones: two buttons per row, full width */
+            .header-actions .btn {
+                flex: 1 1 calc(50% - 0.5rem);
+                justify-content: center;
             }
         }
 
@@ -456,12 +463,90 @@
             </div>
         </div>
     </div>
+
+    {{-- Import by Sangh No. (superadmin): Excel rows go into a chosen range of Sangh numbers --}}
+    @if($rangeImportInfo)
+    <div class="modal fade" id="rangeImportModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-sort-numeric-asc"></i> Import by Sangh No.</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="{{ route('sanghs.import_range') }}" method="POST" enctype="multipart/form-data" id="rangeImportForm">
+                    @csrf
+                    <div class="modal-body">
+                        <p class="small text-muted mb-3">
+                            Excel row 1 goes into <strong>From Sangh No.</strong>, row 2 into the next number, and so on.
+                            Each Sangh keeps its number. Use the same file format as <a href="{{ route('sanghs.template') }}">Template</a>.
+                        </p>
+                        <div class="alert alert-light border small py-2 mb-3">
+                            Sangh No. available: <strong>{{ $rangeImportInfo['min'] }} – {{ $rangeImportInfo['max'] }}</strong>
+                            · Blank: <strong>{{ number_format($rangeImportInfo['blank']) }}</strong>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label small mb-1">From Sangh No.</label>
+                                <input type="number" name="from_no" id="rangeFrom" class="form-control" min="{{ $rangeImportInfo['min'] }}" max="{{ $rangeImportInfo['max'] }}" value="{{ old('from_no') }}" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small mb-1">To Sangh No.</label>
+                                <input type="number" name="to_no" id="rangeTo" class="form-control" min="{{ $rangeImportInfo['min'] }}" max="{{ $rangeImportInfo['max'] }}" value="{{ old('to_no') }}" required>
+                            </div>
+                        </div>
+                        <p class="small mb-3" id="rangeHint">Choose the range to see how many Excel rows you need.</p>
+                        <div class="form-group mb-3">
+                            <label class="form-label small mb-1">Excel file (.xlsx/.xls/.csv)</label>
+                            <input type="file" name="excel_file" class="form-control" accept=".xlsx,.xls,.csv" required>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" name="overwrite" value="1" id="rangeOverwrite" @checked(old('overwrite'))>
+                            <label class="form-check-label small" for="rangeOverwrite">
+                                Also update Sanghs that already have data
+                                <span class="d-block text-muted">Without this, only blank Sanghs are filled and nothing is imported if the range contains a filled Sangh. Empty Excel cells always keep the current value.</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-warning btn-sm">Import</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const from = document.getElementById('rangeFrom');
+            const to = document.getElementById('rangeTo');
+            const hint = document.getElementById('rangeHint');
+            const update = () => {
+                const f = parseInt(from.value, 10), t = parseInt(to.value, 10);
+                if (!f || !t) { hint.className = 'small mb-3'; hint.textContent = 'Choose the range to see how many Excel rows you need.'; return; }
+                if (t < f) { hint.className = 'small mb-3 text-danger'; hint.textContent = '"To" must be the same as or after "From".'; return; }
+                const n = t - f + 1;
+                hint.className = 'small mb-3 text-primary';
+                hint.textContent = `Sangh No. ${f} to ${t} = ${n} Sangh${n === 1 ? '' : 's'} → your Excel file must have exactly ${n} data row${n === 1 ? '' : 's'} (below the header).`;
+            };
+            from.addEventListener('input', update);
+            to.addEventListener('input', update);
+            update();
+
+            @if(session('open_range_import'))
+                // Re-open after a failed import so the user can fix and retry.
+                const modalEl = document.getElementById('rangeImportModal');
+                if (window.bootstrap?.Modal) { new bootstrap.Modal(modalEl).show(); }
+                else if (window.jQuery) { jQuery(modalEl).modal('show'); }
+            @endif
+        });
+    </script>
+    @endif
     </div>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const vibhagDistrictMap = {!! $vibhagDistricts->toJson() !!};
+        const vibhagDistrictMap = @json($vibhagDistricts);
 
         const vibhagSelect = document.querySelector('select[name="pradeshik_vibhag"]');
         const districtSelect = document.querySelector('select[name="district"]');
@@ -491,7 +576,7 @@
             }
         }
 
-        const oldDistrict = "{!! request('district') !!}";
+        const oldDistrict = @json((string) request('district', ''));
         vibhagSelect.addEventListener('change', updateDistricts);
         updateDistricts();
         
