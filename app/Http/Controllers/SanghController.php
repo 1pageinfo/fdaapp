@@ -152,15 +152,15 @@ class SanghController extends Controller
         // Calculate total members dynamically based on the filtered query BEFORE pagination
         $totalMembers = (clone $query)->sum('total_members');
 
-        // Status counts for the index filter (unpaid, paid, information_approved, sangh_registered)
+        // Status counts for the index filter (unpaid, information_approved, sangh_registered); "paid" = approved or registered
         $paidCount = (clone $query)->where(function ($q) use ($request) {
             if ($request->filled('register_receipt_year')) {
-                $q->whereHas('registrationReceipt', fn($r) => $r->where('receipt_year', (int)$request->input('register_receipt_year'))->where('status', 'paid'));
+                $q->whereHas('registrationReceipt', fn($r) => $r->where('receipt_year', (int)$request->input('register_receipt_year'))->whereIn('status', ['information_approved', 'sangh_registered']));
             } elseif ($request->filled('renewal_receipt_year')) {
-                $q->whereHas('renewals', fn($r) => $r->where('renewal_year', (int)$request->input('renewal_receipt_year'))->where('status', 'paid'));
+                $q->whereHas('renewals', fn($r) => $r->where('renewal_year', (int)$request->input('renewal_receipt_year'))->whereIn('status', ['information_approved', 'sangh_registered']));
             } else {
-                $q->whereHas('registrationReceipt', fn($r) => $r->where('status', 'paid'))
-                  ->orWhereHas('renewals', fn($r) => $r->where('status', 'paid'));
+                $q->whereHas('registrationReceipt', fn($r) => $r->whereIn('status', ['information_approved', 'sangh_registered']))
+                  ->orWhereHas('renewals', fn($r) => $r->whereIn('status', ['information_approved', 'sangh_registered']));
             }
         })->count();
 
@@ -378,7 +378,7 @@ class SanghController extends Controller
         abort_unless($sangh->isManageableBy($request->user()), 403);
 
         $validated = $request->validate([
-            'status' => 'required|in:unpaid,paid,information_approved,sangh_registered',
+            'status' => 'required|in:unpaid,information_approved,sangh_registered',
             'feskcom_receipt_date' => 'nullable|date',
             'penalty_fee' => 'nullable|integer|min:0',
             'paid_amount' => 'nullable|integer|min:0',
@@ -407,11 +407,11 @@ class SanghController extends Controller
             ['receipt_year' => $year, 'is_paid' => false, 'status' => 'unpaid']
         );
 
-        // Entering the receipt date marks it paid and auto-assigns the receipt number (once, never overwritten)
+        // Entering the receipt date marks it "Information approved" (counts as paid) and auto-assigns the receipt number (once, never overwritten)
         $hasReceiptDate = !empty($validated['feskcom_receipt_date']);
         $status = $validated['status'];
         if ($hasReceiptDate && $status === 'unpaid') {
-            $status = 'paid';
+            $status = 'information_approved';
         }
         $isPaid = in_array($status, ['paid', 'information_approved', 'sangh_registered']);
 
@@ -884,7 +884,7 @@ class SanghController extends Controller
         abort_unless($sangh->isManageableBy($request->user()), 403);
 
         $validated = $request->validate([
-            'status' => 'required|in:unpaid,paid,information_approved,sangh_registered',
+            'status' => 'required|in:unpaid,information_approved,sangh_registered',
             'feskcom_receipt_date' => 'nullable|date',
             'male_members' => 'nullable|integer|min:0',
             'female_members' => 'nullable|integer|min:0',
@@ -921,7 +921,7 @@ class SanghController extends Controller
         $hasReceiptDate = !empty($validated['feskcom_receipt_date']);
         $status = $validated['status'];
         if ($hasReceiptDate && $status === 'unpaid') {
-            $status = 'paid';
+            $status = 'information_approved';
         }
         $isPaid = in_array($status, ['paid', 'information_approved', 'sangh_registered']);
 

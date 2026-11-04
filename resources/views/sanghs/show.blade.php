@@ -117,7 +117,7 @@
         <div class="col-md-6">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body py-3">
-                    <small class="text-muted d-block">Sang Number</small>
+                    <small class="text-muted d-block">Sangh Number</small>
                     <strong>{{ $display($sangh->unique_ref_no) }}</strong>
                 </div>
             </div>
@@ -220,14 +220,13 @@
                             <div class="d-print-none">
                                 <select name="status" class="form-select form-select-sm" form="newRegisterReceiptForm">
                                     <option value="unpaid" @selected($newRegisterReceipt->status === 'unpaid')>Unpaid</option>
-                                    <option value="paid" @selected($newRegisterReceipt->status === 'paid')>Paid</option>
                                     <option value="information_approved" @selected($newRegisterReceipt->status === 'information_approved')>Information approved</option>
                                     <option value="sangh_registered" @selected($newRegisterReceipt->status === 'sangh_registered')>Sangh Registered</option>
                                 </select>
                             </div>
                             <span class="d-none d-print-block">
                                 {{ match($newRegisterReceipt->status) {
-                                    'paid' => 'Paid',
+                                    'paid' => 'Information approved',
                                     'information_approved' => 'Information approved',
                                     'sangh_registered' => 'Sangh Registered',
                                     default => 'Unpaid'
@@ -364,14 +363,13 @@
                                     <div class="d-print-none">
                                         <select name="status" class="form-select form-select-sm">
                                             <option value="unpaid" @selected($renewal->status === 'unpaid')>Unpaid</option>
-                                            <option value="paid" @selected($renewal->status === 'paid')>Paid</option>
                                             <option value="information_approved" @selected($renewal->status === 'information_approved')>Information approved</option>
                                             <option value="sangh_registered" @selected($renewal->status === 'sangh_registered')>Sangh Registered</option>
                                         </select>
                                     </div>
                                     <span class="d-none d-print-block">
                                         {{ match($renewal->status) {
-                                            'paid' => 'Paid',
+                                            'paid' => 'Information approved',
                                             'information_approved' => 'Information approved',
                                             'sangh_registered' => 'Sangh Registered',
                                             default => 'Unpaid'
@@ -482,7 +480,7 @@
                             <div class="row mb-4">
                                 <div class="col-md-6">
                                     <p><strong>संघ नाव:</strong> {{ $display($sangh->name_of_sangh) }}</p>
-                                    <p><strong>Sang Number:</strong> {{ $display($sangNumber) }}</p>
+                                    <p><strong>Sangh Number:</strong> {{ $display($sangNumber) }}</p>
                                     <p><strong>जिल्हा:</strong> {{ $display($sangh->district) }}</p>
                                 </div>
                                 <div class="col-md-6 text-md-end">
@@ -596,7 +594,7 @@
                             <div class="row mb-4">
                                 <div class="col-md-6">
                                     <p><strong>संघ नाव:</strong> {{ $display($sangh->name_of_sangh) }}</p>
-                                    <p><strong>Sang Number:</strong> {{ $display($sangNumber) }}</p>
+                                    <p><strong>Sangh Number:</strong> {{ $display($sangNumber) }}</p>
                                     <p><strong>जिल्हा:</strong> {{ $display($sangh->district) }}</p>
                                 </div>
                                 <div class="col-md-6 text-md-end">

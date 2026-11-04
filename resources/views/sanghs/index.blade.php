@@ -127,7 +127,6 @@
                         <select name="payment_status" class="form-control form-control-sm shadow-none">
                             <option value="">All Status</option>
                             <option value="unpaid" @selected(request('payment_status') == 'unpaid')>Unpaid</option>
-                            <option value="paid" @selected(request('payment_status') == 'paid')>Paid</option>
                             <option value="information_approved" @selected(request('payment_status') == 'information_approved')>Information approved</option>
                             <option value="sangh_registered" @selected(request('payment_status') == 'sangh_registered')>Sangh Registered</option>
                         </select>
