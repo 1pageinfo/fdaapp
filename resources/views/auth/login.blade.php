@@ -52,7 +52,7 @@
                 <div class="my-2 d-flex justify-content-between align-items-center">
                   <div class="form-check">
                     <label class="form-check-label text-muted">
-                      <input type="checkbox" name="remember" class="form-check-input">
+                      <input type="checkbox" name="remember" class="form-check-input" checked>
                       Keep me signed in
                     </label>
                   </div>

@@ -32,7 +32,8 @@ return [
     |
     */
 
-    'lifetime' => env('SESSION_LIFETIME', 120),
+    // Minutes of inactivity before the login expires (7 days); "Keep me signed in" lasts longer.
+    'lifetime' => (int) env('SESSION_LIFETIME', 10080),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 
@@ -127,10 +128,10 @@ return [
     |
     */
 
-    'cookie' => env(
-        'SESSION_COOKIE',
-        Str::slug(env('APP_NAME', 'laravel'), '_').'_session'
-    ),
+    // Fixed, app-specific name: other Laravel apps on the same host (all named
+    // "Laravel" → "laravel_session") would otherwise overwrite this app's login cookie
+    // and log users out.
+    'cookie' => env('SESSION_COOKIE', 'fdaapp_session'),
 
     /*
     |--------------------------------------------------------------------------
