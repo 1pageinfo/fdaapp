@@ -451,8 +451,8 @@
                     @csrf
                     <div class="modal-body">
                         <div class="form-group">
-                            <label>Select file (.xlsx/.xls/.csv)</label>
-                            <input type="file" name="excel_file" class="form-control" required>
+                            <label>Select file (.xlsx/.xls/.csv) · max {{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_EXCEL_KB) }} MB</label>
+                            <input type="file" name="excel_file" class="form-control" required accept="{{ \App\Support\Uploads::accept(\App\Support\Uploads::EXCEL_TYPES) }}" data-max-mb="{{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_EXCEL_KB) }}">
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -496,8 +496,8 @@
                         </div>
                         <p class="small mb-3" id="rangeHint">Choose the range to see how many Excel rows you need.</p>
                         <div class="form-group mb-3">
-                            <label class="form-label small mb-1">Excel file (.xlsx/.xls/.csv)</label>
-                            <input type="file" name="excel_file" class="form-control" accept=".xlsx,.xls,.csv" required>
+                            <label class="form-label small mb-1">Excel file (.xlsx/.xls/.csv) · max {{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_EXCEL_KB) }} MB</label>
+                            <input type="file" name="excel_file" class="form-control" accept="{{ \App\Support\Uploads::accept(\App\Support\Uploads::EXCEL_TYPES) }}" data-max-mb="{{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_EXCEL_KB) }}" required>
                         </div>
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" name="overwrite" value="1" id="rangeOverwrite" @checked(old('overwrite'))>

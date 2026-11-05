@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\Digits;
+use App\Support\Phone;
 use Illuminate\Foundation\Http\Middleware\TransformsRequest;
 
 /**
@@ -25,6 +26,12 @@ class ConvertDigitsToEnglish extends TransformsRequest
     {
         if (in_array($key, $this->except, true)) {
             return $value;
+        }
+
+        // Contact numbers: also strip spaces / dashes / +91 so "+91 98765-43210" → 9876543210.
+        // ($key is the full dotted path, e.g. "president_phone".)
+        if (is_string($value) && Phone::isPhoneField((string) $key)) {
+            return Phone::clean($value);
         }
 
         return Digits::toEnglish($value);

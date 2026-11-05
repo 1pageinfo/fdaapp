@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\File;
+use App\Support\Uploads;
 use App\Models\Folder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -59,15 +60,12 @@ class FileController extends Controller
         ]);
     }
 
-    private const ALLOWED_UPLOAD_EXTENSIONS = [
-        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt',
-        'jpg', 'jpeg', 'png', 'gif', 'mp4', 'zip',
-    ];
+    // Allowed types and size limit: App\Support\Uploads.
 
     public function store(Request $request)
     {
         $request->validate([
-           'file' => 'required|file|max:1048576|mimes:' . implode(',', self::ALLOWED_UPLOAD_EXTENSIONS),
+            'file' => Uploads::rule(Uploads::FILE_TYPES, Uploads::MAX_FILE_KB),
             'folder_id' => 'nullable|exists:folders,id',
         ]);
         $this->authorizeFolder($request, $request->folder_id);
@@ -214,7 +212,7 @@ class FileController extends Controller
             'name' => 'nullable|string|max:255',
             'folder_id' => 'nullable|exists:folders,id',
             // Same allowed types as a new upload — never scripts or unknown formats.
-            'file' => 'nullable|file|max:1048576|mimes:' . implode(',', self::ALLOWED_UPLOAD_EXTENSIONS),
+            'file' => Uploads::rule(Uploads::FILE_TYPES, Uploads::MAX_FILE_KB, false),
         ]);
         // Moving a file: only into a folder this user can see.
         if ($request->filled('folder_id') && (int) $request->folder_id !== (int) $file->folder_id) {

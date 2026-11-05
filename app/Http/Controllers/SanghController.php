@@ -8,7 +8,9 @@ use App\Models\SanghRegistrationReceipt;
 use App\Models\SanghRenewal;
 use App\Models\Setting;
 use App\Support\Digits;
+use App\Support\Phone;
 use App\Support\SanghFormFields;
+use App\Support\Uploads;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -881,7 +883,7 @@ class SanghController extends Controller
     public function importExcel(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv',
+            'excel_file' => Uploads::rule(Uploads::EXCEL_TYPES, Uploads::MAX_EXCEL_KB),
         ]);
 
         $book = IOFactory::load($request->file('excel_file')->getRealPath());
@@ -911,6 +913,10 @@ class SanghController extends Controller
                     $attributes = $this->sanghAttributesFromImportRow($mapped);
                     if ($attributes['name_of_sangh'] === '') {
                         $errors[] = self::SHEET_MASTER . " row {$line}: संघाचे नाव is required.";
+                        continue;
+                    }
+                    if ($phoneErrors = $this->importPhoneErrors($attributes, self::SHEET_MASTER . " row {$line}")) {
+                        array_push($errors, ...$phoneErrors);
                         continue;
                     }
 
@@ -1130,14 +1136,32 @@ class SanghController extends Controller
             'pradeshik_annual_fee' => $this->decimalOrNull($mapped['प्रादेशिक वार्षिक शुल्क'] ?? null),
             'pradeshik_development_fee' => $this->decimalOrNull($mapped['प्रादेशिक विकास निधी शुल्क'] ?? null),
             'president' => $mapped['अध्यक्ष'] ?? null,
-            'president_phone' => $mapped['अध्यक्ष मोबाईल'] ?? null,
-            'president_whatsapp' => $mapped['अध्यक्ष व्हॉट्सअप'] ?? null,
+            // Contact numbers: formatting removed (+91, spaces, dashes); checked by importPhoneErrors().
+            'president_phone' => Phone::clean($mapped['अध्यक्ष मोबाईल'] ?? null),
+            'president_whatsapp' => Phone::clean($mapped['अध्यक्ष व्हॉट्सअप'] ?? null),
             'president_email' => $mapped['अध्यक्ष इमेल'] ?? null,
             'secretary' => $mapped['सचिव'] ?? null,
-            'secretary_phone' => $mapped['सचिव मोबाईल'] ?? null,
-            'secretary_whatsapp' => $mapped['सचिव व्हॉट्सअप'] ?? null,
+            'secretary_phone' => Phone::clean($mapped['सचिव मोबाईल'] ?? null),
+            'secretary_whatsapp' => Phone::clean($mapped['सचिव व्हॉट्सअप'] ?? null),
             'secretary_email' => $mapped['सचिव इमेल'] ?? null,
         ];
+    }
+
+    /** Contact-number problems in one imported Sangh row (each must be exactly 10 digits). */
+    private function importPhoneErrors(array $attributes, string $where): array
+    {
+        $columns = [
+            'president_phone' => 'अध्यक्ष मोबाईल', 'president_whatsapp' => 'अध्यक्ष व्हॉट्सअप',
+            'secretary_phone' => 'सचिव मोबाईल', 'secretary_whatsapp' => 'सचिव व्हॉट्सअप',
+        ];
+        $errors = [];
+        foreach ($columns as $field => $header) {
+            if (! Phone::isValidMobile($attributes[$field] ?? null)) {
+                $errors[] = "{$where}: {$header} \"{$attributes[$field]}\" must be a 10-digit number (numbers only).";
+            }
+        }
+
+        return $errors;
     }
 
     /**
@@ -1153,7 +1177,7 @@ class SanghController extends Controller
         $request->validate([
             'from_no' => 'required|integer|min:1',
             'to_no' => 'required|integer|gte:from_no',
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv',
+            'excel_file' => Uploads::rule(Uploads::EXCEL_TYPES, Uploads::MAX_EXCEL_KB),
             'overwrite' => 'nullable|boolean',
         ], [
             'to_no.gte' => '"To Sangh No." must be the same as or after "From Sangh No.".',
@@ -1207,6 +1231,7 @@ class SanghController extends Controller
             if (trim((string) ($row['mapped']['संघाचे नाव'] ?? '')) === '') {
                 $problems[] = "Excel row {$row['excel_row']}: संघाचे नाव is empty.";
             }
+            array_push($problems, ...$this->importPhoneErrors($this->sanghAttributesFromImportRow($row['mapped']), "Excel row {$row['excel_row']}"));
         }
         if ($problems) {
             return $fail('Nothing was imported. Please fix the following and upload again:', array_slice($problems, 0, 25)
@@ -1545,14 +1570,14 @@ class SanghController extends Controller
             'pradeshik_annual_fee' => 'nullable|numeric|min:0',
             'pradeshik_development_fee' => 'nullable|numeric|min:0',
             'president' => 'nullable|string|max:255',
-            'president_phone' => 'nullable|digits:10',
-            'president_whatsapp' => 'nullable|digits:10',
+            'president_phone' => Phone::MOBILE_RULE,
+            'president_whatsapp' => Phone::MOBILE_RULE,
             'president_email' => 'nullable|email|max:255',
-            'tel_no' => 'nullable|string|max:30',
-            'alt_tel_no' => 'nullable|string|max:30',
+            'tel_no' => Phone::TELEPHONE_RULE,
+            'alt_tel_no' => Phone::TELEPHONE_RULE,
             'secretary' => 'nullable|string|max:255',
-            'secretary_phone' => 'nullable|digits:10',
-            'secretary_whatsapp' => 'nullable|digits:10',
+            'secretary_phone' => Phone::MOBILE_RULE,
+            'secretary_whatsapp' => Phone::MOBILE_RULE,
             'secretary_email' => 'nullable|email|max:255',
             'email' => 'nullable|email|max:255',
         ];

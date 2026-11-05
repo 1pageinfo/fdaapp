@@ -37,10 +37,12 @@
 
                         <div class="mb-3">
                             <label class="form-label">Phone</label>
-                            <input type="text" name="phone" class="form-control"
+                            <input type="tel" name="phone" class="form-control @error('phone') is-invalid @enderror" data-phone inputmode="numeric" pattern="[0-9]{10}"
+                                   title="10-digit mobile number (numbers only)"
                                    value="{{ old('phone',$user->phone) }}"
-                                   placeholder="+91-XXXXXXXXXX">
-                            <small class="text-muted">Include country/area code if needed.</small>
+                                   placeholder="10-digit mobile number">
+                            @error('phone')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            <small class="text-muted">Numbers only — 10 digits, without +91.</small>
                         </div>
 
                         <div class="mb-3">
@@ -78,7 +80,7 @@
                                  class="rounded-circle border" style="width:160px;height:160px;object-fit:cover;">
                         </div>
 
-                        <input type="file" name="photo" class="form-control mb-2" accept="image/*" onchange="previewPhoto(event)">
+                        <input type="file" name="photo" class="form-control mb-2" accept=".jpg,.jpeg,.png" data-max-mb="2" onchange="previewPhoto(event)">
                         <small class="text-muted d-block mb-2">PNG/JPG up to 2 MB.</small>
 
                         @if($user->photo_path)

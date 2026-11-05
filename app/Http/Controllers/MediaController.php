@@ -45,12 +45,14 @@ class MediaController extends Controller
             'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         ];
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        // nosniff: the browser must use the declared type, never "guess" a file into HTML/script.
+        $headers = ['X-Content-Type-Options' => 'nosniff'];
 
         if (isset($officeMimes[$extension])) {
-            return $disk->response($path, null, ['Content-Type' => $officeMimes[$extension]]);
+            return $disk->response($path, null, ['Content-Type' => $officeMimes[$extension]] + $headers);
         }
 
-        return $disk->response($path);
+        return $disk->response($path, null, $headers);
     }
 
     /**

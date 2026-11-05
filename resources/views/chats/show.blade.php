@@ -429,11 +429,11 @@
       <div class="composer-actions ms-1">
         <label class="composer-btn mb-0" title="Attach">
           📎
-          <input id="fileAll" type="file" hidden accept=".pdf,.xls,.xlsx,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.mp4">
+          <input id="fileAll" type="file" hidden accept="{{ \App\Support\Uploads::accept(\App\Support\Uploads::CHAT_TYPES) }}" data-max-mb="{{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_FILE_KB) }}">
         </label>
 
         <button type="button" id="btnCamera" class="composer-btn" title="Camera">📷</button>
-        <input id="fileCamera" type="file" hidden accept="image/*" capture="environment">
+        <input id="fileCamera" type="file" hidden accept="image/jpeg,image/png" capture="environment" data-max-mb="{{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_FILE_KB) }}">
 
         <button type="button" id="btnEmoji" class="composer-btn" title="Emoji">😊</button>
 

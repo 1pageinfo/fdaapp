@@ -443,6 +443,39 @@
                 el.value = toEnglish(el.value);
                 try { if (pos !== null) el.setSelectionRange(pos, pos); } catch (_) { /* e.g. type=email */ }
             }, true);
+
+            // Contact numbers (inputs marked data-phone): digits only, max 10.
+            // A pasted "+91 98765-43210" or "098765 43210" becomes 9876543210.
+            document.addEventListener('input', function (e) {
+                const el = e.target;
+                if (!el || !el.matches || !el.matches('input[data-phone]')) return;
+                let d = toEnglish(el.value).replace(/\D/g, '');
+                if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+                else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+                d = d.slice(0, 10);
+                if (el.value !== d) el.value = d;
+            });
+
+            // File inputs (data-max-mb): reject a too-big or wrong-type file as soon as it is chosen,
+            // instead of after a long upload. The server checks the same rules again.
+            document.addEventListener('change', function (e) {
+                const el = e.target;
+                if (!el || !el.matches || !el.matches('input[type="file"]') || !el.files || !el.files.length) return;
+                const maxMb = parseFloat(el.getAttribute('data-max-mb') || '0');
+                const allowed = (el.getAttribute('accept') || '').split(',').map((s) => s.trim().toLowerCase()).filter((s) => s.startsWith('.'));
+                for (const f of el.files) {
+                    const ext = '.' + (f.name.split('.').pop() || '').toLowerCase();
+                    let problem = '';
+                    if (allowed.length && !allowed.includes(ext)) problem = '"' + f.name + '" is not an allowed file type.\nAllowed: ' + allowed.join(' ');
+                    else if (maxMb && f.size > maxMb * 1024 * 1024) problem = '"' + f.name + '" is ' + (f.size / 1048576).toFixed(1) + ' MB. The maximum is ' + maxMb + ' MB.';
+                    if (problem) {
+                        alert(problem);
+                        el.value = '';
+                        e.stopImmediatePropagation();
+                        return;
+                    }
+                }
+            }, true);
         })();
     </script>
 </body>

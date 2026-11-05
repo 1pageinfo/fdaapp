@@ -216,9 +216,10 @@
           <div class="modal-body">
             <div class="form-group mb-3">
               <label for="file" class="font-weight-600">Choose a file</label>
-              <input type="file" id="file" name="file" class="form-control" required>
+              <input type="file" id="file" name="file" class="form-control" required
+                     accept="{{ \App\Support\Uploads::accept(\App\Support\Uploads::FILE_TYPES) }}" data-max-mb="{{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_FILE_KB) }}">
               <small class="form-text text-muted">
-                Max size per server limits. Allowed types per backend validation.
+                Max {{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_FILE_KB) }} MB · PDF, Word, Excel, PowerPoint, CSV, TXT, JPG, PNG, GIF, MP4, ZIP
               </small>
             </div>
           </div>

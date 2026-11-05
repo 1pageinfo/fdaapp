@@ -19,7 +19,8 @@
 
         <div class="mb-3">
             <label>Photo/Attachment</label>
-            <input type="file" name="file" class="form-control" accept="image/*,.pdf">
+            <input type="file" name="file" class="form-control" accept=".jpg,.jpeg,.png,.pdf" data-max-mb="2">
+            <small class="text-muted">JPG, PNG or PDF · max 2 MB</small>
         </div>
 
         <button class="btn btn-success">Save Receipt</button>

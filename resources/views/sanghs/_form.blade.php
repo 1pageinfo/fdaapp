@@ -358,11 +358,11 @@
     </div>
     <div class="form-group col-md-3">
         <label>मो.फ़ोन नंबर</label>
-        <input type="text" name="president_phone" class="form-control" value="{{ old('president_phone', $sangh->president_phone ?? '') }}">
+        <input type="tel" name="president_phone" class="form-control" data-phone inputmode="numeric" pattern="[0-9]{10}" title="10-digit number (numbers only)" placeholder="10-digit number" value="{{ old('president_phone', $sangh->president_phone ?? '') }}">
     </div>
     <div class="form-group col-md-3">
         <label>व्हॉट्सअप नंबर</label>
-        <input type="text" name="president_whatsapp" class="form-control" value="{{ old('president_whatsapp', $sangh->president_whatsapp ?? '') }}">
+        <input type="tel" name="president_whatsapp" class="form-control" data-phone inputmode="numeric" pattern="[0-9]{10}" title="10-digit number (numbers only)" placeholder="10-digit number" value="{{ old('president_whatsapp', $sangh->president_whatsapp ?? '') }}">
     </div>
     <div class="form-group col-md-3">
         <label>इमेल</label>
@@ -377,11 +377,11 @@
     </div>
     <div class="form-group col-md-3">
         <label>मो.फ़ोन नंबर</label>
-        <input type="text" name="secretary_phone" class="form-control" value="{{ old('secretary_phone', $sangh->secretary_phone ?? '') }}">
+        <input type="tel" name="secretary_phone" class="form-control" data-phone inputmode="numeric" pattern="[0-9]{10}" title="10-digit number (numbers only)" placeholder="10-digit number" value="{{ old('secretary_phone', $sangh->secretary_phone ?? '') }}">
     </div>
     <div class="form-group col-md-3">
         <label>व्हॉट्सअप नंबर</label>
-        <input type="text" name="secretary_whatsapp" class="form-control" value="{{ old('secretary_whatsapp', $sangh->secretary_whatsapp ?? '') }}">
+        <input type="tel" name="secretary_whatsapp" class="form-control" data-phone inputmode="numeric" pattern="[0-9]{10}" title="10-digit number (numbers only)" placeholder="10-digit number" value="{{ old('secretary_whatsapp', $sangh->secretary_whatsapp ?? '') }}">
     </div>
     <div class="form-group col-md-3">
         <label>इमेल</label>

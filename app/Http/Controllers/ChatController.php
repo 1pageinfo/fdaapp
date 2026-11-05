@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Group;
+use App\Support\Uploads;
 use App\Models\Chat;
 use App\Models\ChatMessage;
 use App\Models\File;
@@ -74,7 +75,7 @@ class ChatController extends Controller
 
         $validated = $request->validate([
             'body' => 'nullable|string|max:5000',
-            'file' => 'nullable|file|max:1048576|mimes:pdf,xls,xlsx,doc,docx,ppt,pptx,jpg,jpeg,png,mp4',
+            'file' => Uploads::rule(Uploads::CHAT_TYPES, Uploads::MAX_FILE_KB, false),
         ]);
 
         $fileId = null;
