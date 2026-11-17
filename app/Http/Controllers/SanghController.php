@@ -1366,7 +1366,7 @@ class SanghController extends Controller
         // Ensure public disk is configured (default exists)
         Storage::disk('public')->put($path, $pdf->output());
 
-        $url = route('media.show', ['path' => $path]);
+        $url = \App\Support\Media::url($path);
 
         // Option 1: redirect back with link
         return redirect()->back()->with('pdf_saved', $url);

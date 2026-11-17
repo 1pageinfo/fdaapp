@@ -29,7 +29,7 @@
             <label class="form-label">Replace file (optional)</label>
             <input type="file" name="file" class="form-control" accept="{{ \App\Support\Uploads::accept(\App\Support\Uploads::FILE_TYPES) }}" data-max-mb="{{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_FILE_KB) }}">
             <small class="text-muted d-block">Max {{ \App\Support\Uploads::mb(\App\Support\Uploads::MAX_FILE_KB) }} MB · PDF, Word, Excel, PowerPoint, CSV, TXT, JPG, PNG, GIF, MP4, ZIP</small>
-            <small class="text-muted">Current: <a href="{{ $file->disk_path ? route('media.show', ['path' => $file->disk_path]) : '#' }}" target="_blank">{{ $file->name }}</a></small>
+            <small class="text-muted">Current: <a href="{{ $file->disk_path ? \App\Support\Media::url($file->disk_path) : '#' }}" target="_blank">{{ $file->name }}</a></small>
         </div>
 
         <button class="btn btn-primary">Save</button>

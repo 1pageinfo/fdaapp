@@ -56,7 +56,7 @@
           @foreach($files as $f)
             @php
               $fileName = $f->name ?? $f->title ?? ('File #' . $f->id);
-              $fileUrl = $f->disk_path ? route('media.show', ['path' => $f->disk_path]) : ($f->path ?: '#');
+              $fileUrl = $f->disk_path ? \App\Support\Media::url($f->disk_path) : ($f->path ?: '#');
               $createdFile = isset($f->created_at) ? \Carbon\Carbon::parse($f->created_at)->format('Y-m-d') : null;
             @endphp
 
