@@ -7,6 +7,7 @@
     $inr = fn ($v) => '₹ ' . number_format((float) $v, 0);
     $fyStart = now()->month >= 4 ? now()->startOfYear()->addMonths(3) : now()->subYear()->startOfYear()->addMonths(3);
     $ranges = [
+        'All time' => [null, null],
         'Today' => [now()->toDateString(), now()->toDateString()],
         '7 days' => [now()->subDays(6)->toDateString(), now()->toDateString()],
         '30 days' => [now()->subDays(29)->toDateString(), now()->toDateString()],
@@ -38,18 +39,24 @@
             <h2 class="dash-title mb-1">Dashboard</h2>
             <p class="dash-sub mb-0">
                 {{ $isSuperadmin ? 'Whole organisation' : 'Your Sanghs, folders, groups and meetings' }}
-                · Period <strong>{{ \Carbon\Carbon::parse($startDate)->format('d M Y') }}</strong> – <strong>{{ \Carbon\Carbon::parse($endDate)->format('d M Y') }}</strong>
+                · Period
+                @if($allTime)
+                    <strong>All time</strong>
+                @else
+                    <strong>{{ \Carbon\Carbon::parse($startDate)->format('d M Y') }}</strong> – <strong>{{ \Carbon\Carbon::parse($endDate)->format('d M Y') }}</strong>
+                @endif
+                <span class="d-block small">Sanghs counted by संघ नोंदणी दिनांक · receipts by पावती दिनांक</span>
             </p>
         </div>
         <form method="GET" action="{{ route('dashboard') }}" class="dash-filter d-flex flex-wrap align-items-end gap-2">
             <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Quick ranges">
                 @foreach($ranges as $label => [$s, $e])
-                    <a href="{{ route('dashboard', ['start_date' => $s, 'end_date' => $e]) }}"
-                       class="btn {{ $startDate === $s && $endDate === $e ? 'btn-primary' : 'btn-light' }}">{{ $label }}</a>
+                    <a href="{{ $s === null ? route('dashboard') : route('dashboard', ['start_date' => $s, 'end_date' => $e]) }}"
+                       class="btn {{ ($s === null ? $allTime : (! $allTime && $startDate === $s && $endDate === $e)) ? 'btn-primary' : 'btn-light' }}">{{ $label }}</a>
                 @endforeach
             </div>
-            <input type="date" name="start_date" value="{{ $startDate }}" class="form-control form-control-sm" aria-label="From">
-            <input type="date" name="end_date" value="{{ $endDate }}" class="form-control form-control-sm" aria-label="To">
+            <input type="date" name="start_date" value="{{ $allTime ? '' : $startDate }}" class="form-control form-control-sm" aria-label="From">
+            <input type="date" name="end_date" value="{{ $allTime ? '' : $endDate }}" class="form-control form-control-sm" aria-label="To">
             <button class="btn btn-sm btn-primary"><i class="ti-filter"></i> Apply</button>
         </form>
     </div>
@@ -60,7 +67,7 @@
             <a href="{{ route('sanghs.index') }}" class="dash-kpi" data-perm="sanghs.view">
                 <div class="dash-kpi-label"><i class="ti-home"></i> Sanghs</div>
                 <div class="dash-kpi-value">{{ number_format($kpi['sanghs']) }}</div>
-                <div class="dash-kpi-sub">+{{ number_format($kpi['sanghs_new']) }} added in period</div>
+                <div class="dash-kpi-sub">{{ $allTime ? 'All Sanghs' : 'Registered in period · of ' . number_format($kpi['sanghs_total']) . ' total' }}</div>
             </a>
         </div>
         <div class="col-6 col-xl">
@@ -81,14 +88,14 @@
             <div class="dash-kpi">
                 <div class="dash-kpi-label"><i class="ti-alert"></i> Balance due</div>
                 <div class="dash-kpi-value {{ $kpi['balance_due'] > 0 ? 'text-danger' : '' }}">{{ $inr($kpi['balance_due']) }}</div>
-                <div class="dash-kpi-sub">Outstanding on all receipts</div>
+                <div class="dash-kpi-sub">{{ $allTime ? 'Outstanding on all receipts' : 'Outstanding on receipts in period' }}</div>
             </div>
         </div>
         <div class="col-12 col-xl">
             <div class="dash-kpi">
                 <div class="dash-kpi-label"><i class="ti-medall"></i> Registered Sanghs</div>
                 <div class="dash-kpi-value">{{ number_format($kpi['registered']) }}</div>
-                <div class="dash-kpi-sub">{{ $pct($kpi['registered'], max($kpi['sanghs'], 1)) }}% of Sanghs @if($isSuperadmin && $kpi['blank_rows'])· {{ number_format($kpi['blank_rows']) }} blank rows @endif</div>
+                <div class="dash-kpi-sub">{{ $allTime ? $pct($kpi['registered'], max($kpi['sanghs_total'], 1)) . '% of Sanghs' : 'by संघ नोंदणी दिनांक in period' }} @if($isSuperadmin && $kpi['blank_rows'])· {{ number_format($kpi['blank_rows']) }} blank rows @endif</div>
             </div>
         </div>
     </div>
@@ -254,13 +261,13 @@
         </div>
         <div class="col-xl-4">
             <div class="dash-card h-100">
-                <div class="dash-card-head"><h5>Recently added Sanghs</h5><a href="{{ route('sanghs.index') }}" class="dash-link" data-perm="sanghs.view">All →</a></div>
+                <div class="dash-card-head"><h5>Recently registered Sanghs</h5><a href="{{ route('sanghs.index') }}" class="dash-link" data-perm="sanghs.view">All →</a></div>
                 <ul class="dash-list">
                     @forelse($recentSanghs as $s)
                         <li>
                             <div class="min-w-0 flex-grow-1">
                                 <a href="{{ route('sanghs.show', $s) }}" class="text-truncate d-block fw-semibold dash-plain">{{ $s->name_of_sangh }}</a>
-                                <div class="dash-muted small">{{ $s->district ?: '-' }} · {{ optional($s->created_date ? \Carbon\Carbon::parse($s->created_date) : $s->created_at)->format('d M Y') }}</div>
+                                <div class="dash-muted small">{{ $s->district ?: '-' }} · {{ optional($s->registered_at)->format('d M Y') }}</div>
                             </div>
                             <span class="badge {{ $statusBadge($s)[0] }}">{{ $statusBadge($s)[1] }}</span>
                         </li>

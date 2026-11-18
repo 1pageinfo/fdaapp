@@ -19,6 +19,12 @@ return new class extends Migration
 
     public function up(): void
     {
+        // A one-time cleanup of existing MySQL data (uses REGEXP). A fresh database —
+        // e.g. the in-memory SQLite one tests use — has nothing to clean.
+        if (! in_array(\Illuminate\Support\Facades\DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return;
+        }
+
         foreach (self::COLUMNS as $table => $columns) {
             foreach ($columns as $column) {
                 DB::table($table)->select(['id', $column])

@@ -9,7 +9,9 @@ use App\Models\SanghRenewal;
 use App\Models\Setting;
 use App\Support\Digits;
 use App\Support\Phone;
+use App\Support\SanghCodes;
 use App\Support\SanghFormFields;
+use App\Support\SanghYears;
 use App\Support\Uploads;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -61,8 +63,12 @@ class SanghController extends Controller
         'सचिव मोबाईल',
         'सचिव व्हॉट्सअप',
         'सचिव इमेल',
-        'फॉर्म तयार केल्याची तारीख',
+        'संघ नोंदणी दिनांक',
     ];
+
+    /** Cheque / transaction number column (receipt sheets). Old files used 'चेक क्रमांक'. */
+    private const CHEQUE_HEADER = 'चेक क्रमांक / Transaction क्रमांक';
+    private const OLD_CHEQUE_HEADER = 'चेक क्रमांक';
 
     /** Sheet 2: the New register Sangh receipt (one per Sangh). */
     private const REGISTRATION_HEADERS = [
@@ -84,7 +90,7 @@ class SanghController extends Controller
         'पावती रक्कम (भरलेली)',
         'बाकी रक्कम',
         'बँकेचे नाव',
-        'चेक क्रमांक',
+        self::CHEQUE_HEADER,
         'चेक दिनांक',
     ];
 
@@ -109,7 +115,7 @@ class SanghController extends Controller
         'पावती रक्कम (भरलेली)',
         'बाकी रक्कम',
         'बँकेचे नाव',
-        'चेक क्रमांक',
+        self::CHEQUE_HEADER,
         'चेक दिनांक',
     ];
 
@@ -139,18 +145,19 @@ class SanghController extends Controller
             $query->where('registration_year', (int) $request->input('year'));
         }
 
-        // Created-date range. Invalid dates are ignored; a reversed range is swapped
-        // so "From 30-11 To 01-11" still means November rather than returning nothing.
+        // संघ नोंदणी दिनांक range (the date the Sangh became "Sangh Registered" — the
+        // created date is for activity tracking only). Invalid dates are ignored; a
+        // reversed range is swapped so "From 30-11 To 01-11" still means November.
         $fromDate = $this->parseFilterDate($request->input('from_date'));
         $toDate = $this->parseFilterDate($request->input('to_date'));
         if ($fromDate && $toDate && $fromDate->gt($toDate)) {
             [$fromDate, $toDate] = [$toDate, $fromDate];
         }
         if ($fromDate) {
-            $query->where('created_at', '>=', $fromDate->copy()->startOfDay());
+            $query->whereDate('registered_at', '>=', $fromDate->toDateString());
         }
         if ($toDate) {
-            $query->where('created_at', '<=', $toDate->copy()->endOfDay());
+            $query->whereDate('registered_at', '<=', $toDate->toDateString());
         }
 
         // Ownership filter
@@ -224,6 +231,7 @@ class SanghController extends Controller
         $query = Sangh::query();
         $this->applyFilters($query, $request);
 
+        $stats = $this->filterStats($query, $request);
         $sanghs = $query->orderBy('sangh_sr_no', 'asc')->paginate(15)->withQueryString();
 
         // Filter options come only from Sanghs this user can see, so a member is
@@ -240,7 +248,7 @@ class SanghController extends Controller
 
         $vibhags = $visible()->whereNotNull('pradeshik_vibhag')->where('pradeshik_vibhag', '!=', '')->distinct()->orderBy('pradeshik_vibhag')->pluck('pradeshik_vibhag');
         $districts = $visible()->whereNotNull('district')->where('district', '!=', '')->distinct()->orderBy('district')->pluck('district');
-        $years = range((int) date('Y'), 1970);
+        $years = SanghYears::all();
 
         $vibhagDistricts = $visible()
             ->whereNotNull('pradeshik_vibhag')
@@ -251,9 +259,9 @@ class SanghController extends Controller
             ->groupBy('pradeshik_vibhag')
             ->map->pluck('district');
         
-        // Get unique receipt years (excluding sangh data that has no receipt)
-        $registerReceiptYears = SanghRegistrationReceipt::query()->distinct()->orderBy('receipt_year', 'desc')->pluck('receipt_year');
-        $renewalReceiptYears = SanghRenewal::query()->distinct()->orderBy('renewal_year', 'desc')->pluck('renewal_year');
+        // Receipt year filters offer the same full year range as everywhere else.
+        $registerReceiptYears = $years;
+        $renewalReceiptYears = $years;
 
         // Show "Pre-add Blank Sangh rows" only to superadmin, and only until it has been done.
         $showPlaceholderSeeder = $request->user()->hasRole('superadmin') && Sangh::count() < self::PLACEHOLDER_TARGET;
@@ -267,7 +275,38 @@ class SanghController extends Controller
                 ->count(),
         ] : null;
 
-        return view('sanghs.index', compact('sanghs', 'vibhags', 'districts', 'vibhagDistricts', 'years', 'registerReceiptYears', 'renewalReceiptYears', 'showPlaceholderSeeder', 'rangeImportInfo'));
+        return view('sanghs.index', compact('sanghs', 'stats', 'vibhags', 'districts', 'vibhagDistricts', 'years', 'registerReceiptYears', 'renewalReceiptYears', 'showPlaceholderSeeder', 'rangeImportInfo'));
+    }
+
+    /**
+     * Counts shown beside "Total Sangh Found" for the current filters:
+     * how many प्रादेशिक विभाग / जिल्हा the found Sanghs are in, and how many
+     * Register / Renewal receipts they have (limited to the chosen receipt year
+     * and status, when those filters are set).
+     */
+    private function filterStats($filteredQuery, Request $request): array
+    {
+        $ids = (clone $filteredQuery)->select('sanghs.id');
+        $status = in_array($request->input('payment_status'), ['unpaid', 'information_approved', 'sangh_registered'], true)
+            ? $request->input('payment_status') : null;
+        $registerYear = $request->filled('register_receipt_year') ? (int) $request->input('register_receipt_year') : null;
+        $renewalYear = $request->filled('renewal_receipt_year') ? (int) $request->input('renewal_receipt_year') : null;
+
+        $distinct = fn (string $column) => (clone $filteredQuery)->whereNotNull($column)->where($column, '!=', '')
+            ->distinct()->count($column);
+
+        return [
+            'vibhags' => $distinct('pradeshik_vibhag'),
+            'districts' => $distinct('district'),
+            'register_receipts' => SanghRegistrationReceipt::query()->whereIn('sangh_id', $ids)
+                ->when($registerYear, fn ($q) => $q->where('receipt_year', $registerYear))
+                ->when($status, fn ($q) => $q->where('status', $status))
+                ->count(),
+            'renewal_receipts' => SanghRenewal::query()->whereIn('sangh_id', $ids)
+                ->when($renewalYear, fn ($q) => $q->where('renewal_year', $renewalYear))
+                ->when($status, fn ($q) => $q->where('status', $status))
+                ->count(),
+        ];
     }
 
     public function create()
@@ -350,8 +389,8 @@ class SanghController extends Controller
                     'district_sr_no' => null,
                     'pradeshik_ref_no' => null,
                     'district_ref_no' => null,
-                    'pradeshik_vibhag_code' => $this->normalizeCode($validated['pradeshik_vibhag_code'] ?? $validated['pradeshik_vibhag']),
-                    'district_code' => $this->normalizeCode($validated['district_code'] ?? $validated['district']),
+                    'pradeshik_vibhag_code' => $this->vibhagCode($validated['pradeshik_vibhag'] ?? null, $validated['pradeshik_vibhag_code'] ?? null),
+                    'district_code' => $this->districtCode($validated['district'] ?? null, $validated['district_code'] ?? null),
                 ]
             ));
 
@@ -397,9 +436,11 @@ class SanghController extends Controller
             ->orderBy('id')
             ->first(['id']);
 
-        $receiptCount = $this->receiptData($sangh)['receiptCount'];
-
-        return view('sanghs.show', compact('sangh', 'prevSangh', 'nextSangh', 'receiptCount'));
+        // All receipts (every status) are shown — and printed — on the details page.
+        return view('sanghs.show', array_merge(
+            compact('sangh', 'prevSangh', 'nextSangh'),
+            $this->receiptData($sangh)
+        ));
     }
 
     /** Separate Receipts page for one Sangh: Registered / Renewal / Backdated, in one table. */
@@ -452,17 +493,66 @@ class SanghController extends Controller
 
         $receiptCount = $renewals->count() + ($newRegisterReceipt ? 1 : 0);
 
-        return compact('registrationYear', 'newRegisterReceipt', 'renewals', 'nextRenewalYear', 'backdatedYears', 'receiptCount');
+        // One list of every receipt (registration + renewal + backdated), newest year first,
+        // for the Receipts page tables and the Sangh Details page / print.
+        $allReceipts = collect();
+        if ($newRegisterReceipt) {
+            $allReceipts->push($this->receiptRow($newRegisterReceipt, 'registration', (int) ($newRegisterReceipt->receipt_year ?? $registrationYear)));
+        }
+        foreach ($renewals as $r) {
+            $allReceipts->push($this->receiptRow($r, $r->is_backdated ? 'backdated' : 'renewal', (int) $r->renewal_year));
+        }
+        $allReceipts = $allReceipts->sortByDesc('year')->values();
+
+        $isRegistered = $newRegisterReceipt?->status === 'sangh_registered';
+
+        return compact('registrationYear', 'newRegisterReceipt', 'renewals', 'nextRenewalYear', 'backdatedYears', 'receiptCount', 'allReceipts', 'isRegistered');
+    }
+
+    /** A receipt (registration or renewal) as one display row. */
+    private function receiptRow($receipt, string $kind, int $year): array
+    {
+        $isRegistration = $kind === 'registration';
+        $total = $isRegistration
+            ? (float) $receipt->admission_fee + (float) $receipt->annual_fee + (float) $receipt->development_fee
+            : (float) $receipt->annual_fee + (float) $receipt->development_fee + (float) $receipt->penalty_fee;
+        $paid = (float) ($receipt->paid_amount ?? 0);
+        $status = in_array($receipt->status, ['information_approved', 'sangh_registered'], true) ? $receipt->status
+            : ($receipt->status === 'paid' ? 'information_approved' : 'unpaid');
+
+        return [
+            'kind' => $kind,
+            'year' => $year,
+            'no' => $receipt->feskcom_receipt_no,
+            'date' => $receipt->feskcom_receipt_date,
+            'registered_at' => $receipt->registered_at,
+            'status' => $status,
+            'male' => $receipt->male_members,
+            'female' => $receipt->female_members,
+            'members' => $receipt->total_members,
+            'admission' => $isRegistration ? (float) $receipt->admission_fee : null,
+            'annual' => (float) $receipt->annual_fee,
+            'development' => (float) $receipt->development_fee,
+            'penalty' => $isRegistration ? null : (float) $receipt->penalty_fee,
+            'total' => $total,
+            'paid' => $paid,
+            'balance' => $total - $paid,
+            'bank' => $receipt->bank_name,
+            'cheque_no' => $receipt->cheque_no,
+            'cheque_date' => $receipt->cheque_date,
+            'modal' => $isRegistration ? '#receiptModalNewRegister' : '#receiptModal' . $year,
+            'edit' => $isRegistration ? '#editReceiptNewRegister' : '#editRenewal' . $year,
+        ];
     }
 
     /** Oldest year a backdated receipt may be created for. */
-    public const FIRST_RECEIPT_YEAR = 1969;
+    public const FIRST_RECEIPT_YEAR = SanghYears::FIRST; // 1979-80
 
     /**
      * Years the Receipts section may create for this Sangh:
      *  - Renewal: only the NEXT year — one after the latest renewal (or after the
      *    registration receipt year when there are no renewals yet), at most next year.
-     *  - Backdated: any PAST year from 1969 to last year without a receipt (never the current year).
+     *  - Backdated: any PAST year from 1979-80 to last year without a receipt (never the current year).
      *
      * @return array{0: ?int, 1: int[]}
      */
@@ -474,7 +564,7 @@ class SanghController extends Controller
         $base = $usedYears ? max($usedYears)
             : ($sangh->registrationReceipt?->receipt_year ?? $this->intOrNull($sangh->registration_year) ?? ($currentYear - 1));
         $next = (int) $base + 1;
-        $nextRenewalYear = ($next <= $currentYear + 1 && ! in_array($next, $usedYears, true)) ? $next : null;
+        $nextRenewalYear = ($next <= SanghYears::last() && ! in_array($next, $usedYears, true)) ? $next : null;
 
         $backdatedYears = array_values(array_filter(
             range($currentYear - 1, self::FIRST_RECEIPT_YEAR),
@@ -570,16 +660,25 @@ class SanghController extends Controller
             $status = 'information_approved';
         }
 
+        // "Sangh Registered" happens once: after that the status (and its date) is locked;
+        // only the payment details can still be corrected.
+        $alreadyRegistered = $receipt->status === 'sangh_registered';
+        if ($alreadyRegistered) {
+            $status = 'sangh_registered';
+        }
+
         // Receipt number: an imported one is kept; otherwise auto-assigned once, never overwritten.
         if (! empty($data['feskcom_receipt_no'])) {
             $receipt->feskcom_receipt_no = (string) $data['feskcom_receipt_no'];
-        } elseif (empty($receipt->feskcom_receipt_no) && $hasReceiptDate) {
+        } elseif (empty($receipt->feskcom_receipt_no) && ($hasReceiptDate || $status === 'sangh_registered')) {
             $receipt->feskcom_receipt_no = 'FSNEW/' . $receipt->id;
         }
 
-        // संघ नोंदणी दिनांक: kept from the first time it became "Sangh Registered"; cleared if moved back.
+        // संघ नोंदणी दिनांक: set the one time it becomes "Sangh Registered", never changed after.
         $registeredAt = $status === 'sangh_registered'
-            ? (($data['registered_at'] ?? null) ?: ($receipt->registered_at ?? now()->toDateString()))
+            ? ($alreadyRegistered && $receipt->registered_at
+                ? $receipt->registered_at
+                : (($data['registered_at'] ?? null) ?: now()->toDateString()))
             : null;
 
         $receipt->update([
@@ -603,7 +702,7 @@ class SanghController extends Controller
             'cheque_date' => $data['cheque_date'] ?? null,
         ]);
 
-        $this->assignNumberingIfRegistered($sangh, $status);
+        $this->assignNumberingIfRegistered($sangh, $status, $registeredAt);
 
         return $receipt;
     }
@@ -611,11 +710,11 @@ class SanghController extends Controller
     /**
      * Save a Renewal / Backdated receipt — the same rules for the screen and Excel import:
      * fees from Settings → Sangh Fees for the member count; receipt no. FSREN/{id} assigned
-     * once; a receipt date → "Information approved"; "Sangh Registered" records the
-     * registered date and assigns the Sangh numbering.
+     * once; a receipt date → "Information approved". A renewal is never "Sangh Registered"
+     * (that happens once, on the registration receipt), so it never assigns numbering.
      * $data: status, feskcom_receipt_date, male_members, female_members, penalty_fee,
      * paid_amount, bank_name, cheque_no, cheque_date — import only: feskcom_receipt_no,
-     * registered_at, is_backdated.
+     * is_backdated.
      */
     private function saveRenewal(Sangh $sangh, int $year, array $data): SanghRenewal
     {
@@ -643,18 +742,17 @@ class SanghController extends Controller
         }
 
         $hasReceiptDate = ! empty($data['feskcom_receipt_date']);
-        $status = $data['status'] ?? 'unpaid';
+        // "Sangh Registered" is registration-only; on a renewal (e.g. an old Excel file) it means approved.
+        $status = match ($data['status'] ?? null) {
+            'information_approved', 'sangh_registered' => 'information_approved',
+            default => 'unpaid',
+        };
         if ($hasReceiptDate && $status === 'unpaid') {
             $status = 'information_approved';
         }
 
-        // संघ नोंदणी दिनांक: kept from the first time it became "Sangh Registered"; cleared if moved back.
-        $registeredAt = $status === 'sangh_registered'
-            ? (($data['registered_at'] ?? null) ?: ($renewal->registered_at ?? now()->toDateString()))
-            : null;
-
         $attributes = [
-            'registered_at' => $registeredAt,
+            'registered_at' => null,
             'is_paid' => in_array($status, ['information_approved', 'sangh_registered'], true),
             'status' => $status,
             'feskcom_receipt_no' => $renewal->feskcom_receipt_no,
@@ -676,22 +774,37 @@ class SanghController extends Controller
         }
         $renewal->update($attributes);
 
-        $this->assignNumberingIfRegistered($sangh, $status);
-
         return $renewal;
     }
 
-    /** Sangh numbering is assigned once, the first time any receipt becomes "Sangh Registered". */
-    private function assignNumberingIfRegistered(Sangh $sangh, string $status): void
+    /** Statuses a Renewal / Backdated receipt can have ("Sangh Registered" is registration-only). */
+    public const RENEWAL_STATUSES = ['unpaid', 'information_approved'];
+
+    /** A Sangh is registered once its registration receipt is "Sangh Registered". */
+    private function isRegistered(Sangh $sangh): bool
     {
-        if ($status === 'sangh_registered' && $sangh->sangh_sr_no === null) {
-            $sangh->update($this->makeNumbering(
-                $sangh->pradeshik_vibhag,
-                $sangh->district,
-                $sangh->category_code,
-                $sangh->sangh_type_code,
-                $sangh->created_date
-            ));
+        return SanghRegistrationReceipt::query()->where('sangh_id', $sangh->id)
+            ->where('status', 'sangh_registered')->exists();
+    }
+
+    /**
+     * The one time the registration receipt becomes "Sangh Registered": the Sangh records that
+     * date as its संघ नोंदणी दिनांक (registered_at) and — if it has none yet — gets
+     * its numbering, with the FY/quarter taken from that date.
+     */
+    private function assignNumberingIfRegistered(Sangh $sangh, string $status, $registeredAt = null): void
+    {
+        if ($status !== 'sangh_registered') {
+            return;
+        }
+
+        $registeredAt = $sangh->registered_at ?? ($registeredAt ?: now()->toDateString());
+        $updates = $sangh->registered_at === null ? ['registered_at' => $registeredAt] : [];
+        if ($sangh->sangh_sr_no === null) {
+            $updates += $this->makeNumbering($sangh, $registeredAt);
+        }
+        if ($updates) {
+            $sangh->update($updates);
         }
     }
 
@@ -714,8 +827,8 @@ class SanghController extends Controller
         // on a plain edit. Only the short display codes are kept in sync with the selected
         // vibhag/district here.
         $numbering = [
-            'pradeshik_vibhag_code' => $this->normalizeCode($validated['pradeshik_vibhag_code'] ?? $selectedVibhag),
-            'district_code' => $this->normalizeCode($validated['district_code'] ?? $selectedDistrict),
+            'pradeshik_vibhag_code' => $this->vibhagCode($selectedVibhag, $validated['pradeshik_vibhag_code'] ?? null),
+            'district_code' => $this->districtCode($selectedDistrict, $validated['district_code'] ?? null),
         ];
 
         $sangh->update(array_merge($this->normalizePayload($validated, $request->user()->hasRole('superadmin')), $numbering));
@@ -776,7 +889,7 @@ class SanghController extends Controller
                     'पावती रक्कम (भरलेली)' => $rc->paid_amount,
                     'बाकी रक्कम' => $total - (float) $rc->paid_amount,
                     'बँकेचे नाव' => $rc->bank_name,
-                    'चेक क्रमांक' => $rc->cheque_no,
+                    self::CHEQUE_HEADER => $rc->cheque_no,
                     'चेक दिनांक' => optional($rc->cheque_date)->format('Y-m-d'),
                 ]);
             }
@@ -800,7 +913,7 @@ class SanghController extends Controller
                     'पावती रक्कम (भरलेली)' => $rn->paid_amount,
                     'बाकी रक्कम' => $total - (float) $rn->paid_amount,
                     'बँकेचे नाव' => $rn->bank_name,
-                    'चेक क्रमांक' => $rn->cheque_no,
+                    self::CHEQUE_HEADER => $rn->cheque_no,
                     'चेक दिनांक' => optional($rn->cheque_date)->format('Y-m-d'),
                 ]);
             }
@@ -858,7 +971,7 @@ class SanghController extends Controller
             'सचिव मोबाईल' => $s->secretary_phone,
             'सचिव व्हॉट्सअप' => $s->secretary_whatsapp,
             'सचिव इमेल' => $s->secretary_email,
-            'फॉर्म तयार केल्याची तारीख' => $s->created_date ? \Carbon\Carbon::parse($s->created_date)->format('Y-m-d') : optional($s->created_at)->format('Y-m-d'),
+            'संघ नोंदणी दिनांक' => optional($s->registered_at)->format('Y-m-d'),
         ];
     }
 
@@ -945,8 +1058,8 @@ class SanghController extends Controller
                         $sangh = Sangh::create($attributes + $numbering + [
                             'created_by' => Auth::id(),
                             'created_date' => now(),
-                            'pradeshik_vibhag_code' => $this->normalizeCode($attributes['pradeshik_vibhag']),
-                            'district_code' => $this->normalizeCode($attributes['district']),
+                            'pradeshik_vibhag_code' => $this->vibhagCode($attributes['pradeshik_vibhag']),
+                            'district_code' => $this->districtCode($attributes['district']),
                         ]);
                         $counts['created']++;
                     }
@@ -973,8 +1086,12 @@ class SanghController extends Controller
                             : ($year === null ? 'वर्ष is required.' : 'you can only update your own / assigned Sanghs.'));
                         continue;
                     }
-                    if ($year < self::FIRST_RECEIPT_YEAR || $year > (int) date('Y') + 1) {
-                        $errors[] = self::SHEET_RENEWALS . " row {$line}: वर्ष {$year} is outside " . self::FIRST_RECEIPT_YEAR . '–' . ((int) date('Y') + 1) . '.';
+                    if (! $this->isRegistered($sangh) && ! SanghRenewal::where('sangh_id', $sangh->id)->where('renewal_year', $year)->exists()) {
+                        $errors[] = self::SHEET_RENEWALS . " row {$line}: the Sangh is not registered yet — add its Registration Receipts row with स्थिती \"Sangh Registered\" first.";
+                        continue;
+                    }
+                    if (! SanghYears::contains($year)) {
+                        $errors[] = self::SHEET_RENEWALS . " row {$line}: वर्ष {$year} is outside " . self::FIRST_RECEIPT_YEAR . '–' . SanghYears::last() . '.';
                         continue;
                     }
                     $data = $this->receiptDataFromImportRow($mapped) + [
@@ -1073,7 +1190,7 @@ class SanghController extends Controller
             'penalty_fee' => $this->intOrNull($mapped['दंड शुल्क'] ?? null),
             'paid_amount' => is_numeric($mapped['पावती रक्कम (भरलेली)'] ?? null) ? (int) round((float) $mapped['पावती रक्कम (भरलेली)']) : null,
             'bank_name' => trim((string) ($mapped['बँकेचे नाव'] ?? '')) ?: null,
-            'cheque_no' => trim((string) ($mapped['चेक क्रमांक'] ?? '')) ?: null,
+            'cheque_no' => trim((string) ($mapped[self::CHEQUE_HEADER] ?? $mapped[self::OLD_CHEQUE_HEADER] ?? '')) ?: null,
             'cheque_date' => $this->importDate($mapped['चेक दिनांक'] ?? null),
         ];
     }
@@ -1249,10 +1366,10 @@ class SanghController extends Controller
                 // Sangh No. and its reference numbers stay as they are; only the short
                 // vibhag/district codes follow the imported vibhag/district.
                 if (isset($attributes['pradeshik_vibhag'])) {
-                    $attributes['pradeshik_vibhag_code'] = $this->normalizeCode($attributes['pradeshik_vibhag']);
+                    $attributes['pradeshik_vibhag_code'] = $this->vibhagCode($attributes['pradeshik_vibhag']);
                 }
                 if (isset($attributes['district'])) {
-                    $attributes['district_code'] = $this->normalizeCode($attributes['district']);
+                    $attributes['district_code'] = $this->districtCode($attributes['district']);
                 }
                 // Keep the total in step when only one of male/female is given.
                 if (isset($attributes['male']) || isset($attributes['female'])) {
@@ -1430,13 +1547,19 @@ class SanghController extends Controller
         abort_unless($sangh->isManageableBy($request->user()), 403);
 
         $request->validate([
-            'renewal_year' => ['required', 'integer', 'min:' . self::FIRST_RECEIPT_YEAR, 'max:' . ((int) date('Y') + 1)],
+            'renewal_year' => ['required', 'integer', 'min:' . self::FIRST_RECEIPT_YEAR, 'max:' . SanghYears::last()],
             'receipt_type' => ['nullable', 'in:renewal,backdated'],
         ]);
         $year = (int) $request->input('renewal_year');
         $isBackdated = $request->input('receipt_type') === 'backdated';
 
-        // Same rules the Receipts tabs show: Renewal = next year only; Backdated = 1969…this year, unused.
+        // Registration happens once; renewal / backdated receipts only after it.
+        if (! $this->isRegistered($sangh)) {
+            return redirect()->route('sanghs.receipts', $sangh)->with('error',
+                'Register the Sangh first: set the Registered Receipt status to "Sangh Registered". Renewal and backdated receipts can be created only after that.');
+        }
+
+        // Same rules the Receipts tabs show: Renewal = next year only; Backdated = 1979-80…last year, unused.
         [$nextRenewalYear, $backdatedYears] = $this->receiptYearOptions($sangh, $this->visibleRenewals($sangh));
         $allowed = $isBackdated ? in_array($year, $backdatedYears, true) : $year === $nextRenewalYear;
         if (! $allowed) {
@@ -1490,7 +1613,7 @@ class SanghController extends Controller
         abort_unless($sangh->isManageableBy($request->user()), 403);
 
         $validated = $request->validate([
-            'status' => 'required|in:unpaid,information_approved,sangh_registered',
+            'status' => 'required|in:' . implode(',', self::RENEWAL_STATUSES),
             'feskcom_receipt_date' => 'nullable|date',
             'male_members' => 'nullable|integer|min:0',
             'female_members' => 'nullable|integer|min:0',
@@ -1548,7 +1671,7 @@ class SanghController extends Controller
         return [
             'assigned_to' => 'nullable|exists:users,id',
             'name_of_sangh' => $nameRule,
-            'registration_year' => 'nullable|integer|min:1900|max:' . date('Y'),
+            'registration_year' => SanghYears::rule(),
             'category_code' => 'required|string|in:R,U,A',
             'sangh_type_code' => 'required|string|in:G,F',
             'pradeshik_vibhag' => 'required|string|max:255',
@@ -1632,10 +1755,20 @@ class SanghController extends Controller
         return $payload;
     }
 
-    private function makeNumbering($vibhag, $district, $categoryCode, $sanghTypeCode, $createdDate = null)
+    /**
+     * Sangh numbering, assigned once when the Sangh is registered. The FY and quarter
+     * in the Unique number come from the संघ नोंदणी दिनांक ($registeredDate) — never
+     * from the created date. Pradeshik / District numbers use the form's codes
+     * (मुंबई → MM/…, मुंबई सिटी → MC/…).
+     */
+    private function makeNumbering(Sangh $sangh, $registeredDate = null): array
     {
-        $vibhagCode = $this->normalizeCode($vibhag);
-        $districtCode = $this->normalizeCode($district);
+        $vibhag = $sangh->pradeshik_vibhag;
+        $district = $sangh->district;
+        $categoryCode = $sangh->category_code;
+        $sanghTypeCode = $sangh->sangh_type_code;
+        $vibhagCode = $this->vibhagCode($vibhag, $sangh->pradeshik_vibhag_code);
+        $districtCode = $this->districtCode($district, $sangh->district_code);
 
         // Fetch max existing sequence numbers
         $existingGlobalNo = Sangh::query()->max('sangh_sr_no');
@@ -1650,7 +1783,7 @@ class SanghController extends Controller
         $category = in_array($categoryCode, ['R', 'U', 'A'], true) ? $categoryCode : 'R';
         $sanghType = in_array($sanghTypeCode, ['G', 'F'], true) ? $sanghTypeCode : 'G';
 
-        $date = $createdDate ? \Carbon\Carbon::parse($createdDate) : now();
+        $date = $registeredDate ? \Carbon\Carbon::parse($registeredDate) : now();
         $month = $date->month;
         $year = $date->year;
 
@@ -1680,9 +1813,22 @@ class SanghController extends Controller
         ];
     }
 
+    /** प्रादेशिक विभाग code: the form's fixed code (मुंबई → MM), else the given code. */
+    private function vibhagCode(?string $vibhag, ?string $code = null): string
+    {
+        return SanghCodes::vibhag($vibhag) ?? $this->normalizeCode($code ?: $vibhag);
+    }
+
+    /** जिल्हा code: the form's fixed code (मुंबई सिटी → MC), else the given code. */
+    private function districtCode(?string $district, ?string $code = null): string
+    {
+        return SanghCodes::district($district) ?? $this->normalizeCode($code ?: $district);
+    }
+
+    /** Fallback for values outside the fixed lists: up to 3 English letters, else "SG". */
     private function normalizeCode(?string $value): string
     {
-        $clean = strtoupper(preg_replace('/[^A-Z]/', '', Str::ascii((string) $value)));
+        $clean = preg_replace('/[^A-Z]/', '', strtoupper(Str::ascii((string) $value)));
         return $clean !== '' ? Str::substr($clean, 0, 3) : 'SG';
     }
 

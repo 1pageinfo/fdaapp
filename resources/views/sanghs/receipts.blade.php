@@ -64,7 +64,7 @@
                     <div class="ref-icon"><i class="fa fa-hashtag"></i></div>
                     <div>
                         <small class="d-block">Sangh Number</small>
-                        <strong>{{ $display($sangh->unique_ref_no) }}</strong>
+                        <span class="num-pill num-pill-lg">{{ $display($sangh->unique_ref_no) }}</span>
                     </div>
                 </div>
             </div>
@@ -75,7 +75,7 @@
                     <div class="ref-icon"><i class="fa fa-map-marker"></i></div>
                     <div>
                         <small class="d-block">District Ref</small>
-                        <strong>{{ $display($sangh->district_ref_no) }}</strong>
+                        <span class="num-pill num-pill-lg">{{ $display($sangh->district_ref_no) }}</span>
                     </div>
                 </div>
             </div>
@@ -87,36 +87,18 @@
         $statusLabel = fn ($s) => match ($s) { 'sangh_registered' => 'Sangh Registered', 'information_approved' => 'Information approved', default => 'Unpaid' };
         $statusClass = fn ($s) => match ($s) { 'sangh_registered' => 'bg-primary text-white', 'information_approved' => 'bg-success text-white', default => 'bg-warning text-dark' };
         $regIsRegistered = $newRegisterReceipt && $newRegisterReceipt->status === 'sangh_registered';
-
-        // One list for the table: registration receipt + every renewal / backdated receipt, newest first.
-        $allReceipts = collect();
-        if ($newRegisterReceipt) { // shown even before first save, so its status can be set
-            $regTotal = ($newRegisterReceipt->admission_fee ?? 0) + ($newRegisterReceipt->annual_fee ?? 0) + ($newRegisterReceipt->development_fee ?? 0);
-            $allReceipts->push([
-                'type' => 'Registered', 'typeClass' => 'bg-primary text-white',
-                'year' => $newRegisterReceipt->receipt_year, 'no' => $newRegisterReceipt->feskcom_receipt_no,
-                'date' => $newRegisterReceipt->feskcom_receipt_date, 'status' => $newRegisterReceipt->status,
-                'total' => $regTotal, 'paid' => (float) ($newRegisterReceipt->paid_amount ?? 0),
-                'modal' => $regIsRegistered ? '#receiptModalNewRegister' : null,
-                'locked' => ! $regIsRegistered, 'edit' => '#editReceiptNewRegister',
-            ]);
-        }
-        foreach ($renewals as $r) {
-            $allReceipts->push([
-                'type' => $r->is_backdated ? 'Backdated' : 'Renewal', 'typeClass' => $r->is_backdated ? 'bg-secondary text-white' : 'bg-info text-white',
-                'year' => $r->renewal_year, 'no' => $r->feskcom_receipt_no,
-                'date' => $r->feskcom_receipt_date, 'status' => $r->status,
-                'total' => ($r->annual_fee ?? 0) + ($r->development_fee ?? 0) + ($r->penalty_fee ?? 0),
-                'paid' => (float) ($r->paid_amount ?? 0),
-                'modal' => '#receiptModal' . $r->renewal_year, 'locked' => false, 'edit' => '#editRenewal' . $r->renewal_year,
-            ]);
-        }
-        $allReceipts = $allReceipts->sortByDesc('year')->values();
+        // $allReceipts (registration + renewal + backdated, newest first) comes from the controller.
+        $statusTabs = [
+            'all' => ['All', null],
+            'unpaid' => ['Unpaid', 'fa-clock-o'],
+            'information_approved' => ['Information approved', 'fa-check'],
+            'sangh_registered' => ['Sangh Registered', 'fa-certificate'],
+        ];
     @endphp
     <div class="card mb-4" id="receipts">
         <div class="card-header bg-light border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
             <h5 class="mb-0"><i class="fa fa-file-text-o text-primary"></i> Receipts</h5>
-            <small class="text-muted">{{ $allReceipts->count() }} receipt(s)</small>
+            <small class="text-muted"><span class="num-pill">{{ $allReceipts->count() }}</span> receipt(s)</small>
         </div>
         <div class="card-body pb-2 no-print">
             <ul class="nav nav-tabs receipt-tabs" role="tablist">
@@ -143,8 +125,9 @@
                         <p class="text-muted mb-0">Set the वर्ष (registration year) in the Sangh form to start the registration receipt.</p>
                     @elseif($regIsRegistered)
                         <div class="d-flex flex-wrap align-items-center gap-3">
-                            <span><i class="fa fa-check-circle text-success"></i> Generated automatically — Sangh registered on
-                                <strong>{{ optional($newRegisterReceipt->registered_at)->format('d-m-Y') ?? '-' }}</strong>.</span>
+                            <span><i class="fa fa-lock text-success"></i> Sangh registered on
+                                <strong>{{ optional($newRegisterReceipt->registered_at)->format('d-m-Y') ?? '-' }}</strong>.
+                                Registration is done once — use <strong>Renewal Receipt</strong> from now on.</span>
                             <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#receiptModalNewRegister">
                                 <i class="fa fa-eye"></i> View / Print
                             </button>
@@ -164,7 +147,9 @@
 
                 {{-- 2. Renewal: only the next year --}}
                 <div class="tab-pane fade" id="rcpt-renewal" role="tabpanel">
-                    @if($nextRenewalYear)
+                    @if(! $isRegistered)
+                        <p class="text-muted mb-0"><i class="fa fa-lock"></i> Renewal is available after the Sangh is registered — set the <strong>Registered Receipt</strong> status to <strong>Sangh Registered</strong> first.</p>
+                    @elseif($nextRenewalYear)
                         <form action="{{ route('sanghs.renewals.create', $sangh) }}" method="POST" class="d-flex flex-wrap align-items-center gap-2" data-perm="sanghs.edit">
                             @csrf
                             <input type="hidden" name="receipt_type" value="renewal">
@@ -178,9 +163,11 @@
                     @endif
                 </div>
 
-                {{-- 3. Backdated: any past year 1969 → last year without a receipt (not the current year) --}}
+                {{-- 3. Backdated: any past year 1979-80 → last year without a receipt (not the current year) --}}
                 <div class="tab-pane fade" id="rcpt-backdated" role="tabpanel">
-                    @if(count($backdatedYears))
+                    @if(! $isRegistered)
+                        <p class="text-muted mb-0"><i class="fa fa-lock"></i> Backdated receipts are available after the Sangh is registered — set the <strong>Registered Receipt</strong> status to <strong>Sangh Registered</strong> first.</p>
+                    @elseif(count($backdatedYears))
                         <form action="{{ route('sanghs.renewals.create', $sangh) }}" method="POST" class="d-flex flex-wrap align-items-center gap-2" data-perm="sanghs.edit">
                             @csrf
                             <input type="hidden" name="receipt_type" value="backdated">
@@ -192,23 +179,34 @@
                             </select>
                             <button type="submit" class="btn btn-sm btn-secondary"><i class="fa fa-plus"></i> Create Receipt</button>
                         </form>
-                        <small class="text-muted d-block mt-2">Any past year from {{ \App\Http\Controllers\SanghController::FIRST_RECEIPT_YEAR }} to {{ date('Y') - 1 }} that has no receipt yet. The current year is not available here.</small>
+                        <small class="text-muted d-block mt-2">Any past year from {{ \App\Providers\AppServiceProvider::financialYear(\App\Support\SanghYears::FIRST) }} to {{ \App\Providers\AppServiceProvider::financialYear(date('Y') - 1) }} that has no receipt yet. The current year is not available here.</small>
                     @else
-                        <p class="text-muted mb-0">Every year from {{ \App\Http\Controllers\SanghController::FIRST_RECEIPT_YEAR }} to {{ date('Y') - 1 }} already has a receipt.</p>
+                        <p class="text-muted mb-0">Every year from {{ \App\Providers\AppServiceProvider::financialYear(\App\Support\SanghYears::FIRST) }} to {{ \App\Providers\AppServiceProvider::financialYear(date('Y') - 1) }} already has a receipt.</p>
                     @endif
                 </div>
             </div>
         </div>
 
-        {{-- All receipts in one table --}}
+        {{-- Receipts by status: All / Unpaid / Information approved / Sangh Registered --}}
         @if($allReceipts->isEmpty())
             <div class="card-body pt-2 text-muted">No receipts yet.</div>
         @else
+        <div class="px-3 pt-2 no-print">
+            <ul class="nav nav-pills status-tabs gap-1" role="tablist">
+                @foreach($statusTabs as $key => [$label, $icon])
+                    <li class="nav-item">
+                        <button type="button" class="nav-link {{ $key === 'all' ? 'active' : '' }}" data-status-tab="{{ $key }}">
+                            @if($icon)<i class="fa {{ $icon }}"></i>@endif {{ $label }}
+                            <span class="num-pill ms-1">{{ $key === 'all' ? $allReceipts->count() : $allReceipts->where('status', $key)->count() }}</span>
+                        </button>
+                    </li>
+                @endforeach
+            </ul>
+        </div>
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle mb-0">
+            <table class="table table-sm table-hover align-middle mb-0" id="receiptsTable">
                 <thead class="table-light">
                     <tr>
-                        <th>Type</th>
                         <th>वर्ष</th>
                         <th>पावती क्र.</th>
                         <th>पावती दिनांक</th>
@@ -221,8 +219,7 @@
                 </thead>
                 <tbody>
                     @foreach($allReceipts as $rc)
-                        <tr>
-                            <td><span class="badge {{ $rc['typeClass'] }}">{{ $rc['type'] }}</span></td>
+                        <tr data-status="{{ $rc['status'] }}">
                             <td>@fy($rc['year'])</td>
                             <td>{{ $rc['no'] ?: '-' }}</td>
                             <td>{{ optional($rc['date'])->format('d-m-Y') ?? '-' }}</td>
@@ -234,18 +231,15 @@
                                 <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="{{ $rc['edit'] }}" data-perm="sanghs.edit">
                                     <i class="fa fa-pencil"></i> Edit
                                 </button>
-                                @if($rc['modal'])
-                                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="{{ $rc['modal'] }}">
-                                        <i class="fa fa-eye"></i> View
-                                    </button>
-                                @else
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Generated when status is Sangh Registered">
-                                        <i class="fa fa-lock"></i> View
-                                    </button>
-                                @endif
+                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="{{ $rc['modal'] }}">
+                                    <i class="fa fa-eye"></i> View
+                                </button>
                             </td>
                         </tr>
                     @endforeach
+                    <tr class="d-none" data-empty-row>
+                        <td colspan="8" class="text-center text-muted py-3">No receipts with this status.</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -267,12 +261,19 @@
                             <div class="row g-3">
                                 <div class="col-md-6">
                                     <label class="form-label small mb-1">Status</label>
-                                    <select name="status" class="form-select">
-                                        <option value="unpaid" @selected($newRegisterReceipt->status === 'unpaid' || ! $newRegisterReceipt->status)>Unpaid</option>
-                                        <option value="information_approved" @selected($newRegisterReceipt->status === 'information_approved')>Information approved</option>
-                                        <option value="sangh_registered" @selected($newRegisterReceipt->status === 'sangh_registered')>Sangh Registered</option>
-                                    </select>
-                                    <small class="text-muted">Sangh Registered generates the receipt and records today as संघ नोंदणी दिनांक.</small>
+                                    @if($regIsRegistered)
+                                        {{-- Registered once — status locked; only payment details can be corrected. --}}
+                                        <input type="hidden" name="status" value="sangh_registered">
+                                        <input type="text" class="form-control bg-light" value="Sangh Registered" disabled>
+                                        <small class="text-muted"><i class="fa fa-lock"></i> Locked — registered on {{ optional($newRegisterReceipt->registered_at)->format('d-m-Y') }}. Registration happens only once.</small>
+                                    @else
+                                        <select name="status" class="form-select">
+                                            <option value="unpaid" @selected($newRegisterReceipt->status === 'unpaid' || ! $newRegisterReceipt->status)>Unpaid</option>
+                                            <option value="information_approved" @selected($newRegisterReceipt->status === 'information_approved')>Information approved</option>
+                                            <option value="sangh_registered">Sangh Registered</option>
+                                        </select>
+                                        <small class="text-muted">Sangh Registered is done once: it records today as संघ नोंदणी दिनांक, gives the Sangh its number and then locks. After that only renewals are created.</small>
+                                    @endif
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label small mb-1">फेस्कॉम पावती क्र.</label>
@@ -292,12 +293,12 @@
                                 <div class="col-md-3 col-6"><label class="form-label small mb-1">विकास निधी शुल्क</label><input type="number" class="form-control bg-light" data-fee value="{{ (int) $newRegisterReceipt->development_fee }}" disabled></div>
                                 <div class="col-md-3 col-6"><label class="form-label small mb-1">एकूण रक्कम</label><input type="number" class="form-control bg-light fw-bold" data-total disabled></div>
 
-                                <div class="col-md-4"><label class="form-label small mb-1">पावती रक्कम (भरलेली)</label><input type="number" name="paid_amount" min="0" step="1" class="form-control" data-paid value="{{ $newRegisterReceipt->paid_amount }}"></div>
+                                <div class="col-md-4"><label class="form-label small mb-1">पावती रक्कम (भरलेली)</label><input type="text" inputmode="numeric" data-int name="paid_amount" class="form-control" data-paid value="{{ $newRegisterReceipt->paid_amount }}"></div>
                                 <div class="col-md-4"><label class="form-label small mb-1">बाकी रक्कम</label><input type="number" class="form-control fw-bold" data-balance disabled></div>
                                 <div class="col-md-4"></div>
 
                                 <div class="col-md-4"><label class="form-label small mb-1">बँकेचे नाव</label><input type="text" name="bank_name" class="form-control" value="{{ $newRegisterReceipt->bank_name }}"></div>
-                                <div class="col-md-4"><label class="form-label small mb-1">चेक क्रमांक</label><input type="text" name="cheque_no" class="form-control" value="{{ $newRegisterReceipt->cheque_no }}"></div>
+                                <div class="col-md-4"><label class="form-label small mb-1">चेक क्रमांक / Transaction क्रमांक</label><input type="text" name="cheque_no" class="form-control" value="{{ $newRegisterReceipt->cheque_no }}"></div>
                                 <div class="col-md-4"><label class="form-label small mb-1">चेक दिनांक</label><input type="date" name="cheque_date" class="form-control" value="{{ optional($newRegisterReceipt->cheque_date)->format('Y-m-d') }}"></div>
                             </div>
                             <small class="text-muted d-block mt-3">Fees follow Settings → Sangh Fees and the Sangh's member count; they are not entered by hand.</small>
@@ -327,9 +328,8 @@
                                 <div class="col-md-6">
                                     <label class="form-label small mb-1">Status</label>
                                     <select name="status" class="form-select">
-                                        <option value="unpaid" @selected($renewal->status === 'unpaid' || ! $renewal->status)>Unpaid</option>
+                                        <option value="unpaid" @selected($renewal->status !== 'information_approved')>Unpaid</option>
                                         <option value="information_approved" @selected($renewal->status === 'information_approved')>Information approved</option>
-                                        <option value="sangh_registered" @selected($renewal->status === 'sangh_registered')>Sangh Registered</option>
                                     </select>
                                 </div>
                                 <div class="col-md-3">
@@ -341,21 +341,21 @@
                                     <input type="date" name="feskcom_receipt_date" class="form-control" value="{{ optional($renewal->feskcom_receipt_date)->format('Y-m-d') }}">
                                 </div>
 
-                                <div class="col-4"><label class="form-label small mb-1">पुरुष</label><input type="number" name="male_members" min="0" class="form-control" data-male value="{{ $renewal->male_members }}"></div>
-                                <div class="col-4"><label class="form-label small mb-1">महिला</label><input type="number" name="female_members" min="0" class="form-control" data-female value="{{ $renewal->female_members }}"></div>
+                                <div class="col-4"><label class="form-label small mb-1">पुरुष</label><input type="text" inputmode="numeric" data-int name="male_members" class="form-control" data-male value="{{ $renewal->male_members }}"></div>
+                                <div class="col-4"><label class="form-label small mb-1">महिला</label><input type="text" inputmode="numeric" data-int name="female_members" class="form-control" data-female value="{{ $renewal->female_members }}"></div>
                                 <div class="col-4"><label class="form-label small mb-1">एकूण</label><input type="number" class="form-control bg-light" data-members value="{{ $renewal->total_members }}" disabled></div>
 
                                 <div class="col-md-3 col-6"><label class="form-label small mb-1">वार्षिक शुल्क</label><input type="number" class="form-control bg-light" data-annual value="{{ (int) $renewal->annual_fee }}" disabled></div>
                                 <div class="col-md-3 col-6"><label class="form-label small mb-1">विकास निधी शुल्क</label><input type="number" class="form-control bg-light" data-development value="{{ (int) $renewal->development_fee }}" disabled></div>
-                                <div class="col-md-3 col-6"><label class="form-label small mb-1">दंड शुल्क</label><input type="number" name="penalty_fee" min="0" step="1" class="form-control" data-penalty value="{{ $renewal->penalty_fee }}"></div>
+                                <div class="col-md-3 col-6"><label class="form-label small mb-1">दंड शुल्क</label><input type="text" inputmode="numeric" data-int name="penalty_fee" class="form-control" data-penalty value="{{ $renewal->penalty_fee }}"></div>
                                 <div class="col-md-3 col-6"><label class="form-label small mb-1">एकूण रक्कम</label><input type="number" class="form-control bg-light fw-bold" data-total disabled></div>
 
-                                <div class="col-md-4"><label class="form-label small mb-1">पावती रक्कम (भरलेली)</label><input type="number" name="paid_amount" min="0" step="1" class="form-control" data-paid value="{{ $renewal->paid_amount }}"></div>
+                                <div class="col-md-4"><label class="form-label small mb-1">पावती रक्कम (भरलेली)</label><input type="text" inputmode="numeric" data-int name="paid_amount" class="form-control" data-paid value="{{ $renewal->paid_amount }}"></div>
                                 <div class="col-md-4"><label class="form-label small mb-1">बाकी रक्कम</label><input type="number" class="form-control fw-bold" data-balance disabled></div>
                                 <div class="col-md-4"></div>
 
                                 <div class="col-md-4"><label class="form-label small mb-1">बँकेचे नाव</label><input type="text" name="bank_name" class="form-control" value="{{ $renewal->bank_name }}"></div>
-                                <div class="col-md-4"><label class="form-label small mb-1">चेक क्रमांक</label><input type="text" name="cheque_no" class="form-control" value="{{ $renewal->cheque_no }}"></div>
+                                <div class="col-md-4"><label class="form-label small mb-1">चेक क्रमांक / Transaction क्रमांक</label><input type="text" name="cheque_no" class="form-control" value="{{ $renewal->cheque_no }}"></div>
                                 <div class="col-md-4"><label class="form-label small mb-1">चेक दिनांक</label><input type="date" name="cheque_date" class="form-control" value="{{ optional($renewal->cheque_date)->format('Y-m-d') }}"></div>
                             </div>
                             <small class="text-muted d-block mt-3">वार्षिक / विकास निधी शुल्क follow Settings → Sangh Fees for the member count; they are not entered by hand.</small>
@@ -458,7 +458,7 @@
                                             <td>बँक तपशील</td>
                                             <td class="text-end">
                                                 {{ $newRegisterReceipt->bank_name }} 
-                                                {{ $newRegisterReceipt->cheque_no ? '(चलन/चेक: ' . $newRegisterReceipt->cheque_no . ')' : '' }}
+                                                {{ $newRegisterReceipt->cheque_no ? '(चेक / Transaction क्र.: ' . $newRegisterReceipt->cheque_no . ')' : '' }}
                                                 {{ $newRegisterReceipt->cheque_date ? ' - ' . \Carbon\Carbon::parse($newRegisterReceipt->cheque_date)->format('d/m/Y') : '' }}
                                             </td>
                                         </tr>
@@ -573,7 +573,7 @@
                                             <td>बँक तपशील</td>
                                             <td class="text-end">
                                                 {{ $renewal->bank_name }} 
-                                                {{ $renewal->cheque_no ? '(चलन/चेक: ' . $renewal->cheque_no . ')' : '' }}
+                                                {{ $renewal->cheque_no ? '(चेक / Transaction क्र.: ' . $renewal->cheque_no . ')' : '' }}
                                                 {{ $renewal->cheque_date ? ' - ' . \Carbon\Carbon::parse($renewal->cheque_date)->format('d/m/Y') : '' }}
                                             </td>
                                         </tr>
@@ -654,6 +654,26 @@
             document.querySelectorAll('form.receipt-edit-form').forEach(function (form) {
                 sync(form);
                 form.addEventListener('input', () => sync(form));
+            });
+        })();
+
+        // Status tabs: All / Unpaid / Information approved / Sangh Registered.
+        (function () {
+            const tabs = document.querySelectorAll('[data-status-tab]');
+            const rows = document.querySelectorAll('#receiptsTable tbody tr[data-status]');
+            const empty = document.querySelector('#receiptsTable [data-empty-row]');
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    const status = tab.getAttribute('data-status-tab');
+                    tabs.forEach((t) => t.classList.toggle('active', t === tab));
+                    let shown = 0;
+                    rows.forEach(function (row) {
+                        const show = status === 'all' || row.getAttribute('data-status') === status;
+                        row.classList.toggle('d-none', !show);
+                        if (show) shown++;
+                    });
+                    if (empty) empty.classList.toggle('d-none', shown > 0);
+                });
             });
         })();
 

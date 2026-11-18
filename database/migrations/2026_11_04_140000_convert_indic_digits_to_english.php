@@ -17,6 +17,12 @@ return new class extends Migration
 
     public function up(): void
     {
+        // A one-time cleanup of existing MySQL data (uses information_schema). A fresh
+        // database — e.g. the in-memory SQLite one tests use — has nothing to convert.
+        if (DB::getDriverName() !== 'mysql' && DB::getDriverName() !== 'mariadb') {
+            return;
+        }
+
         $columns = DB::select(
             "SELECT c.TABLE_NAME AS t, c.COLUMN_NAME AS c
                FROM information_schema.COLUMNS c

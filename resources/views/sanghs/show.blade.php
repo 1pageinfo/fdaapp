@@ -4,73 +4,65 @@
 @php
     $sangh = $sangh ?? new \App\Models\Sangh();
     $display = fn ($v) => ($v === null || $v === '') ? '-' : $v;
-    $sangNumberParts = array_values(array_filter([
-        $sangh->unique_ref_no,
-        $sangh->pradeshik_ref_no,
-        $sangh->district_ref_no,
-    ], fn ($v) => $v !== null && $v !== ''));
-    $sangNumber = count($sangNumberParts) ? implode('/', $sangNumberParts) : null;
-    $registeredMale = is_numeric($sangh->male) ? (int) $sangh->male : null;
-    $registeredFemale = is_numeric($sangh->female) ? (int) $sangh->female : null;
-    $registeredTotal = ($registeredMale === null && $registeredFemale === null)
-        ? null
-        : (($registeredMale ?? 0) + ($registeredFemale ?? 0));
+    $date = fn ($d) => $d ? \Carbon\Carbon::parse($d)->format('d-m-Y') : '-';
+    $inr = fn ($v) => '₹ ' . number_format((float) $v, 0);
 
-    // Sangh fee slabs (admin-configured in Settings → Manage Fee Slabs) — used to
-    // live-calculate वार्षिक शुल्क / विकास निधी शुल्क for renewal rows below.
-    $feeSlabsForRenewal = \App\Models\SanghFeeSlab::orderBy('min_members')->get(['min_members', 'max_members', 'annual_fee']);
-    $developmentFeeRateForRenewal = (float) \App\Models\Setting::getValue('sangh_development_fee_rate', 0);
-
-    $createdAt = $sangh->created_date ?? $sangh->created_at;
-    $createdAtStr = $createdAt ? \Carbon\Carbon::parse($createdAt)->format('d-m-Y') : '-';
+    // Everything date-based on this page uses संघ नोंदणी दिनांक (the day the Sangh became
+    // "Sangh Registered"). The created date is shown only as activity info at the bottom.
+    $registeredAt = $sangh->registered_at;
     $quarterStr = '-';
-
-    if ($createdAt) {
-        $month = (int) \Carbon\Carbon::parse($createdAt)->format('m');
-        if ($month >= 4 && $month <= 6) {
-            $quarterStr = 'Q1 (Apr - Jun)';
-        } elseif ($month >= 7 && $month <= 9) {
-            $quarterStr = 'Q2 (Jul - Sep)';
-        } elseif ($month >= 10 && $month <= 12) {
-            $quarterStr = 'Q3 (Oct - Dec)';
-        } else {
-            $quarterStr = 'Q4 (Jan - Mar)';
-        }
+    if ($registeredAt) {
+        $month = (int) $registeredAt->format('m');
+        $quarterStr = match (true) {
+            $month >= 4 && $month <= 6 => 'Q1 (Apr - Jun)',
+            $month >= 7 && $month <= 9 => 'Q2 (Jul - Sep)',
+            $month >= 10 => 'Q3 (Oct - Dec)',
+            default => 'Q4 (Jan - Mar)',
+        };
     }
 
-    $masterRows = [
-        ['वर्ष', \App\Providers\AppServiceProvider::financialYear($sangh->registration_year)],
-        ['संघाचे नाव', $sangh->name_of_sangh],
-        ['श्रेणी', $sangh->category_code],
-        ['संघ प्रकार', $sangh->sangh_type_code],
-        ['प्रादेशिक विभाग', $sangh->pradeshik_vibhag],
-        ['जिल्हा', $sangh->district],
-        ['तालुका', $sangh->taluka],
-        ['गाव', $sangh->village],
-        ['शहर', $sangh->city],
-        ['मुक्काम पोस्ट', $sangh->mukkam_post],
-        ['पिनकोड', $sangh->pincode],
-        ['पत्ता', $sangh->address],
-        ['रस्ता / पथ', $sangh->road_path],
-        ['विभाग/प्रभाग', $sangh->ward_section],
-        ['पुरुष सभासद संख्या', $sangh->male],
-        ['महिला सभासद संख्या', $sangh->female],
-        ['एकूण सभासद संख्या', $sangh->total_members],
-        ['अध्यक्ष', $sangh->president],
-        ['अध्यक्ष मोबाईल', $sangh->president_phone],
-        ['अध्यक्ष व्हॉट्सअप', $sangh->president_whatsapp],
-        ['अध्यक्ष इमेल', $sangh->president_email],
-        ['सचिव', $sangh->secretary],
-        ['सचिव मोबाईल', $sangh->secretary_phone],
-        ['सचिव व्हॉट्सअप', $sangh->secretary_whatsapp],
-        ['सचिव इमेल', $sangh->secretary_email],
-        ['फॉर्म तयार केल्याची तारीख (Created Date)', $createdAtStr],
-        ['फॉर्म तयार केल्याचे त्रैमासिक (Quarter)', $quarterStr],
+    // [label, value, wide?] — short fields sit two per row; long ones take the full row.
+    $detailRows = [
+        ['वर्ष', \App\Providers\AppServiceProvider::financialYear($sangh->registration_year), false],
+        ['संघ नोंदणी दिनांक', $registeredAt ? $registeredAt->format('d-m-Y') : null, false],
+        ['संघाचे नाव', $sangh->name_of_sangh, true],
+        ['श्रेणी', \App\Support\SanghCodes::categoryLabel($sangh->category_code), false],
+        ['संघ प्रकार', \App\Support\SanghCodes::typeLabel($sangh->sangh_type_code), false],
+        ['प्रादेशिक विभाग', $sangh->pradeshik_vibhag, false],
+        ['जिल्हा', $sangh->district, false],
+        ['तालुका', $sangh->taluka, false],
+        ['गाव', $sangh->village, false],
+        ['शहर', $sangh->city, false],
+        ['मुक्काम पोस्ट', $sangh->mukkam_post, false],
+        ['पत्ता', $sangh->address, true],
+        ['रस्ता / पथ', $sangh->road_path, false],
+        ['विभाग/प्रभाग', $sangh->ward_section, false],
+        ['पिनकोड', $sangh->pincode, false],
+        ['नोंदणी त्रैमासिक (Quarter)', $registeredAt ? $quarterStr : null, false],
+        ['पुरुष सभासद संख्या', $sangh->male, false],
+        ['महिला सभासद संख्या', $sangh->female, false],
+        ['एकूण सभासद संख्या', $sangh->total_members, false],
+        ['', null, false, 'spacer'],
+        ['अध्यक्ष', $sangh->president, false],
+        ['अध्यक्ष मोबाईल', $sangh->president_phone, false],
+        ['अध्यक्ष व्हॉट्सअप', $sangh->president_whatsapp, false],
+        ['अध्यक्ष इमेल', $sangh->president_email, false],
+        ['सचिव', $sangh->secretary, false],
+        ['सचिव मोबाईल', $sangh->secretary_phone, false],
+        ['सचिव व्हॉट्सअप', $sangh->secretary_whatsapp, false],
+        ['सचिव इमेल', $sangh->secretary_email, false],
     ];
 
-    // प्रादेशिक विभागाची फी: always calculated from Settings → Sangh Fees (× 2 / × 2 / × 3).
+    // प्रादेशिक विभागाची फी: always calculated from Settings → Sangh Fees.
     $pradeshikFees = \App\Support\PradeshikFees::calculate($sangh->male, $sangh->female);
     $fee = fn ($key) => $pradeshikFees ? '₹ ' . number_format($pradeshikFees[$key], 0) : '-';
+
+    $statusGroups = [
+        'sangh_registered' => ['Sangh Registered', 'bg-primary text-white'],
+        'information_approved' => ['Information approved', 'bg-success text-white'],
+        'unpaid' => ['Unpaid', 'bg-warning text-dark'],
+    ];
+    $kindLabel = ['registration' => 'नोंदणी', 'renewal' => 'नूतनीकरण', 'backdated' => 'मागील वर्ष'];
 @endphp
 
 <div class="container-fluid mt-4 mb-5 sangh-show-page">
@@ -99,7 +91,7 @@
                 </button>
             @endif
             <a href="{{ route('sanghs.receipts', $sangh) }}" class="btn btn-sm btn-warning">
-                <i class="fa fa-file-text-o"></i> Receipts <span class="badge bg-white text-dark ms-1">{{ $receiptCount }}</span>
+                <i class="fa fa-file-text-o"></i> Receipts <span class="num-pill ms-1">{{ $receiptCount }}</span>
             </a>
             <a href="{{ route('sanghs.edit', $sangh) }}" class="btn btn-sm btn-primary" data-perm="sanghs.edit">
                 <i class="fa fa-edit"></i> Edit
@@ -107,7 +99,7 @@
             <a href="{{ route('sanghs.index') }}" class="btn btn-sm btn-outline-secondary">
                 <i class="fa fa-arrow-left"></i> Back
             </a>
-            <button type="button" class="btn btn-sm btn-success" onclick="printSanghDetails()">
+            <button type="button" class="btn btn-sm btn-success" onclick="window.print()">
                 <i class="fa fa-print"></i> Print
             </button>
         </div>
@@ -125,97 +117,144 @@
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     @endif
-    @if($errors->any())
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="fa fa-exclamation-circle"></i> {{ implode(' ', $errors->all()) }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    @endif
 
-
+    {{-- Reference numbers --}}
     <div class="row g-3 mb-3">
-        <div class="col-md-6">
-            <div class="card ref-card h-100">
-                <div class="card-body">
-                    <div class="ref-icon"><i class="fa fa-hashtag"></i></div>
-                    <div>
-                        <small class="d-block">Sangh Number</small>
-                        <strong>{{ $display($sangh->unique_ref_no) }}</strong>
+        @foreach([
+            ['fa-hashtag', 'Sangh Number', $sangh->unique_ref_no],
+            ['fa-university', 'Pradeshik Ref', $sangh->pradeshik_ref_no],
+            ['fa-map-marker', 'District Ref', $sangh->district_ref_no],
+        ] as [$icon, $label, $value])
+            <div class="col-md-4">
+                <div class="card ref-card h-100">
+                    <div class="card-body">
+                        <div class="ref-icon"><i class="fa {{ $icon }}"></i></div>
+                        <div>
+                            <small class="d-block">{{ $label }}</small>
+                            @if($value)
+                                <span class="num-pill num-pill-lg">{{ $value }}</span>
+                            @else
+                                <strong class="text-muted">-</strong>
+                            @endif
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card ref-card h-100">
-                <div class="card-body">
-                    <div class="ref-icon"><i class="fa fa-map-marker"></i></div>
-                    <div>
-                        <small class="d-block">District Ref</small>
-                        <strong>{{ $display($sangh->district_ref_no) }}</strong>
-                    </div>
-                </div>
-            </div>
-        </div>
+        @endforeach
     </div>
 
-
-
-    <div class="card mb-4">
+    {{-- Master details: two columns --}}
+    <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fa fa-id-card"></i> Master Details</h5>
         </div>
-        <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 details-table">
-                <tbody>
-                    @foreach($masterRows as $row)
-                        <tr>
-                            <th>{{ $row[0] }}</th>
-                            <td class="{{ ($row[1] === null || $row[1] === '') ? 'is-empty' : '' }}">{{ $display($row[1]) }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
+        <div class="kv-grid">
+            @foreach($detailRows as $row)
+                @if(($row[3] ?? null) === 'spacer')
+                    <div class="kv-item kv-spacer"></div>
+                @else
+                    <div class="kv-item {{ $row[2] ? 'kv-wide' : '' }}">
+                        <div class="kv-label">{{ $row[0] }}</div>
+                        <div class="kv-value {{ ($row[1] === null || $row[1] === '') ? 'is-empty' : '' }}">{{ $display($row[1]) }}</div>
+                    </div>
+                @endif
+            @endforeach
         </div>
     </div>
 
-    <div class="card mb-4">
+    {{-- प्रादेशिक fees: one compact row --}}
+    <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fa fa-university"></i> प्रादेशिक विभागाने घेतलेल्या रकमेचे तपशील</h5>
-            <small class="text-muted">Auto-calculated from Settings → Sangh Fees</small>
+            <small class="text-muted no-print">Auto-calculated from Settings → Sangh Fees</small>
         </div>
-        <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 details-table">
-                <tbody>
-                    <tr>
-                        <th>प्रवेश शुल्क <small class="text-muted">(× {{ \App\Support\PradeshikFees::ADMISSION_MULTIPLIER }})</small></th>
-                        <td class="{{ $pradeshikFees ? '' : 'is-empty' }}">{{ $fee('admission') }}</td>
-                    </tr>
-                    <tr>
-                        <th>वार्षिक शुल्क <small class="text-muted">(× {{ \App\Support\PradeshikFees::ANNUAL_MULTIPLIER }})</small></th>
-                        <td class="{{ $pradeshikFees ? '' : 'is-empty' }}">{{ $fee('annual') }}</td>
-                    </tr>
-                    <tr>
-                        <th>विकास निधी शुल्क <small class="text-muted">(× {{ \App\Support\PradeshikFees::DEVELOPMENT_MULTIPLIER }})</small></th>
-                        <td class="{{ $pradeshikFees ? '' : 'is-empty' }}">{{ $fee('development') }}</td>
-                    </tr>
-                    <tr class="table-warning">
-                        <th>एकूण घेतलेली रक्कम (Total)</th>
-                        <td>{{ $fee('total') }}</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="kv-grid kv-grid-4">
+            <div class="kv-item">
+                <div class="kv-label">प्रवेश शुल्क <small>(× {{ \App\Support\PradeshikFees::ADMISSION_MULTIPLIER }})</small></div>
+                <div class="kv-value">{{ $fee('admission') }}</div>
+            </div>
+            <div class="kv-item">
+                <div class="kv-label">वार्षिक शुल्क <small>(× {{ \App\Support\PradeshikFees::ANNUAL_MULTIPLIER }})</small></div>
+                <div class="kv-value">{{ $fee('annual') }}</div>
+            </div>
+            <div class="kv-item">
+                <div class="kv-label">विकास निधी शुल्क <small>(× {{ \App\Support\PradeshikFees::DEVELOPMENT_MULTIPLIER }})</small></div>
+                <div class="kv-value">{{ $fee('development') }}</div>
+            </div>
+            <div class="kv-item kv-total">
+                <div class="kv-label">एकूण घेतलेली रक्कम (Total)</div>
+                <div class="kv-value">{{ $fee('total') }}</div>
+            </div>
         </div>
     </div>
+
+    {{-- All receipts, grouped by status (every status — printed too) --}}
+    <div class="card mb-3" id="receipts">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h5 class="mb-0"><i class="fa fa-file-text-o"></i> Receipts</h5>
+            <div class="d-flex flex-wrap gap-2 small">
+                @foreach($statusGroups as $code => [$label, $class])
+                    <span class="badge {{ $class }}">{{ $label }}: {{ $allReceipts->where('status', $code)->count() }}</span>
+                @endforeach
+            </div>
+        </div>
+        @if($allReceipts->isEmpty())
+            <div class="card-body text-muted">No receipts yet.</div>
+        @else
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 receipts-table">
+                    <thead>
+                        <tr>
+                            <th>वर्ष</th>
+                            <th>पावती क्र.</th>
+                            <th>पावती दिनांक</th>
+                            <th>नोंदणी दिनांक</th>
+                            <th class="text-end">सभासद</th>
+                            <th class="text-end">एकूण</th>
+                            <th class="text-end">भरलेली</th>
+                            <th class="text-end">बाकी</th>
+                            <th>बँक / चेक-Transaction क्र.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($statusGroups as $code => [$label, $class])
+                            <tr class="status-group-row">
+                                <td colspan="9"><span class="badge {{ $class }}">{{ $label }}</span></td>
+                            </tr>
+                            @forelse($allReceipts->where('status', $code) as $rc)
+                                <tr>
+                                    <td class="text-nowrap">@fy($rc['year']) <small class="text-muted">{{ $kindLabel[$rc['kind']] }}</small></td>
+                                    <td>{{ $rc['no'] ?: '-' }}</td>
+                                    <td>{{ $date($rc['date']) }}</td>
+                                    <td>{{ $date($rc['registered_at']) }}</td>
+                                    <td class="text-end">{{ $rc['members'] ?? '-' }}</td>
+                                    <td class="text-end">{{ $inr($rc['total']) }}</td>
+                                    <td class="text-end text-success">{{ $inr($rc['paid']) }}</td>
+                                    <td class="text-end {{ $rc['balance'] > 0 ? 'text-danger fw-bold' : 'text-success' }}">{{ $inr($rc['balance']) }}</td>
+                                    <td class="small">
+                                        {{ $rc['bank'] ?: '' }}
+                                        @if($rc['cheque_no']) <span class="text-muted">· {{ $rc['cheque_no'] }}</span> @endif
+                                        @if($rc['cheque_date']) <span class="text-muted">· {{ $date($rc['cheque_date']) }}</span> @endif
+                                        @if(! $rc['bank'] && ! $rc['cheque_no']) - @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="9" class="text-muted small ps-4">No {{ strtolower($label) }} receipts.</td></tr>
+                            @endforelse
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
+
+    {{-- Activity info only (created date is not used for anything else) --}}
+    <p class="small text-muted mb-0 activity-note">
+        <i class="fa fa-clock-o"></i>
+        Form created {{ $date($sangh->created_date ?? $sangh->created_at) }}@if($sangh->creator) by {{ $sangh->creator->name }}@endif
+        · last updated {{ $date($sangh->updated_at) }}
+    </p>
 
     @include('sanghs._detail_styles')
 </div>
-
-@push('scripts')
-    <script>
-        function printSanghDetails() {
-            window.print();
-        }
-
-    </script>
-@endpush
 @endsection

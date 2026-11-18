@@ -24,6 +24,16 @@
   <link rel="shortcut icon" href="{{ asset('theme/images/logo.jpg') }}" />
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   @stack('styles')
+  <style>
+    /* Numbers shown as a dark pill (counts, reference numbers). */
+    .num-pill {
+      display: inline-block; min-width: 1.9em; padding: .28em .7em; border-radius: 999px;
+      background: #1f2937; color: #fff !important; font-weight: 600; font-size: .85em; line-height: 1.2;
+      text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; letter-spacing: .01em;
+    }
+    .num-pill.num-pill-lg { font-size: 1em; padding: .32em .85em; }
+    @media print { .num-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
 
 </head>
 
@@ -443,6 +453,16 @@
                 el.value = toEnglish(el.value);
                 try { if (pos !== null) el.setSelectionRange(pos, pos); } catch (_) { /* e.g. type=email */ }
             }, true);
+
+            // Whole numbers (inputs marked data-int — member counts, years, amounts): digits
+            // only. These are text inputs, not type=number, so Marathi digits (२५) typed on
+            // a phone keyboard are converted instead of being silently dropped by the browser.
+            document.addEventListener('input', function (e) {
+                const el = e.target;
+                if (!el || !el.matches || !el.matches('input[data-int]')) return;
+                const d = toEnglish(el.value).replace(/\D/g, '');
+                if (el.value !== d) el.value = d;
+            });
 
             // Contact numbers (inputs marked data-phone): digits only, max 10.
             // A pasted "+91 98765-43210" or "098765 43210" becomes 9876543210.

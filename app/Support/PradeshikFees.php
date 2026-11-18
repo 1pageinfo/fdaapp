@@ -10,13 +10,13 @@ use App\Models\Setting;
  *
  * Calculated automatically from Settings → Sangh Fees (standard fees + member
  * slabs), never typed in:
- *   प्रवेश शुल्क     = admission fee × 2
+ *   प्रवेश शुल्क     = admission fee × 1
  *   वार्षिक शुल्क     = slab annual fee (for the member count) × 2
  *   विकास निधी शुल्क = development rate × members × 3
  */
 class PradeshikFees
 {
-    public const ADMISSION_MULTIPLIER = 2;
+    public const ADMISSION_MULTIPLIER = 1;
     public const ANNUAL_MULTIPLIER = 2;
     public const DEVELOPMENT_MULTIPLIER = 3;
 

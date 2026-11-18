@@ -92,6 +92,7 @@ class ActivityLogPresenter
         'alt_tel_no' => 'Alternate telephone',
         'date_meeting' => 'Meeting date',
         'created_date' => 'Created date',
+        'registered_at' => 'संघ नोंदणी दिनांक',
         'created_by' => 'Created by',
         'assigned_to' => 'Assigned to',
 
@@ -171,7 +172,7 @@ class ActivityLogPresenter
         'annual_fee', 'admission_fee', 'development_fee', 'penalty_fee', 'paid_amount', 'amount', 'total_amount',
     ];
 
-    private const CATEGORY_CODES = ['R' => 'ग्रामीण - R', 'U' => 'शहरी - U', 'A' => 'निमशहरी - A'];
+    private const CATEGORY_CODES = ['R' => 'ग्रामीण - R', 'U' => 'शहरी - U', 'A' => 'आदिवासी - A'];
     private const SANGH_TYPE_CODES = ['G' => 'सर्वसाधारण - G', 'F' => 'महिला - F'];
 
     /** Small per-request lookup caches so the page doesn't repeat queries. */

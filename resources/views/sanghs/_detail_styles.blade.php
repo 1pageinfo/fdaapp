@@ -84,6 +84,48 @@
 
     .receipt-print { border: 2px solid #333 !important; background-color: #fff; }
 
+    /* Receipts page: status tabs */
+    .sangh-show-page .status-tabs .nav-link {
+        color: var(--sd-muted); font-weight: 500; border: 1px solid var(--sd-line); border-radius: 999px;
+        padding: .3rem .8rem; background: #fff; display: inline-flex; align-items: center; gap: .3rem;
+    }
+    .sangh-show-page .status-tabs .nav-link.active { background: var(--sd-brand); border-color: var(--sd-brand); color: #fff; }
+    /* Two-column label/value grid (Sangh Details) */
+    .sangh-show-page .kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sangh-show-page .kv-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .sangh-show-page .kv-item {
+        display: grid; grid-template-columns: minmax(130px, 40%) 1fr; align-items: center;
+        border-bottom: 1px solid var(--sd-line); min-width: 0;
+    }
+    .sangh-show-page .kv-grid:not(.kv-grid-4) .kv-item:nth-child(odd):not(.kv-wide) { border-right: 1px solid var(--sd-line); }
+    .sangh-show-page .kv-wide { grid-column: 1 / -1; grid-template-columns: minmax(130px, 20%) 1fr; }
+    .sangh-show-page .kv-spacer { border-bottom: 1px solid var(--sd-line); }
+    .sangh-show-page .kv-label {
+        padding: .55rem 1rem; background: var(--sd-soft); color: var(--sd-muted);
+        font-size: .86rem; font-weight: 500; height: 100%; display: flex; align-items: center; gap: .25rem;
+    }
+    .sangh-show-page .kv-value { padding: .55rem 1rem; font-weight: 500; font-size: .92rem; overflow-wrap: anywhere; }
+    .sangh-show-page .kv-value.is-empty { color: #b6bdc8; font-weight: 400; }
+    .sangh-show-page .kv-grid-4 .kv-item { grid-template-columns: 1fr; border-right: 1px solid var(--sd-line); }
+    .sangh-show-page .kv-grid-4 .kv-item:last-child { border-right: 0; }
+    .sangh-show-page .kv-grid-4 .kv-label { padding: .45rem 1rem; }
+    .sangh-show-page .kv-total .kv-label, .sangh-show-page .kv-total .kv-value { background: #fff8e1; color: var(--sd-ink); font-weight: 700; }
+
+    /* Receipts grouped by status (Sangh Details) */
+    .sangh-show-page .receipts-table thead th {
+        font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; color: var(--sd-muted);
+        background: var(--sd-soft); white-space: nowrap; font-weight: 600;
+    }
+    .sangh-show-page .receipts-table .status-group-row td { background: #fbfcfe; padding-top: .5rem; padding-bottom: .4rem; }
+    .sangh-show-page .receipts-table th:first-child, .sangh-show-page .receipts-table td:first-child { padding-left: 1.25rem; }
+
+    @media (max-width: 768px) {
+        .sangh-show-page .kv-grid, .sangh-show-page .kv-grid-4 { grid-template-columns: 1fr; }
+        .sangh-show-page .kv-grid .kv-item { border-right: 0 !important; }
+        .sangh-show-page .kv-wide { grid-template-columns: minmax(130px, 40%) 1fr; }
+        .sangh-show-page .kv-spacer { display: none; }
+    }
+
     @media (max-width: 992px) {
         .sangh-show-page .details-title { font-size: 1.55rem; }
         .sangh-show-page .details-table th { width: 42%; }
@@ -103,5 +145,17 @@
         .sangh-show-page h5 { font-size: 11px !important; }
         .sangh-show-page table { width: 100% !important; font-size: 9px !important; }
         .sangh-show-page .details-table th, .sangh-show-page .details-table td { padding: 3px 8px !important; }
+        /* One page: keep the two-column grid and tighten everything. */
+        .sangh-show-page .kv-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        .sangh-show-page .kv-grid-4 { grid-template-columns: repeat(4, 1fr) !important; }
+        .sangh-show-page .kv-label, .sangh-show-page .kv-value { padding: 2px 6px !important; font-size: 9px !important; }
+        .sangh-show-page .receipts-table td, .sangh-show-page .receipts-table th { padding: 2px 4px !important; font-size: 8.5px !important; }
+        .sangh-show-page .ref-card .card-body { padding: 4px 8px !important; }
+        .sangh-show-page .ref-card .ref-icon { display: none; }
+        .sangh-show-page .row.g-3 { --bs-gutter-y: 4px; }
+        .sangh-show-page .row.g-3 > .col-md-4 { flex: 0 0 33.333%; max-width: 33.333%; }
+        .sangh-show-page .details-title { font-size: 14px !important; }
+        .sangh-show-page .badge { padding: 1px 5px !important; font-size: 8px !important; }
+        .sangh-show-page .card#receipts { break-inside: auto; }
     }
 </style>

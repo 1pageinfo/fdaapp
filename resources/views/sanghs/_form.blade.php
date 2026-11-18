@@ -33,7 +33,17 @@
 <div class="form-row">
     <div class="form-group col-md-3">
         <label>वर्ष</label>
-        <input type="number" min="1900" max="{{ date('Y') }}" name="registration_year" class="form-control" value="{{ old('registration_year', $sangh->registration_year ?? date('Y')) }}">
+        {{-- 1979-80 … current year + 2 (App\Support\SanghYears); a pick-list, so no "must be an integer" errors. --}}
+        @php($registrationYear = (string) old('registration_year', $sangh->registration_year ?? date('Y')))
+        <select name="registration_year" class="form-control">
+            <option value="">Select वर्ष</option>
+            @if($registrationYear !== '' && ! in_array((int) $registrationYear, \App\Support\SanghYears::all(), true))
+                <option value="{{ $registrationYear }}" selected>@fy($registrationYear)</option>
+            @endif
+            @foreach(\App\Support\SanghYears::all() as $yearOption)
+                <option value="{{ $yearOption }}" {{ $registrationYear === (string) $yearOption ? 'selected' : '' }}>@fy($yearOption)</option>
+            @endforeach
+        </select>
     </div>
     <div class="form-group col-md-5">
         <label>संघाचे नाव</label>
@@ -46,7 +56,7 @@
             <option value="">Select श्रेणी</option>
             <option value="R" {{ $categoryCode === 'R' ? 'selected' : '' }}>ग्रामीण - R</option>
             <option value="U" {{ $categoryCode === 'U' ? 'selected' : '' }}>शहरी - U</option>
-            <option value="A" {{ $categoryCode === 'A' ? 'selected' : '' }}>निमशहरी - A</option>
+            <option value="A" {{ $categoryCode === 'A' ? 'selected' : '' }}>आदिवासी - A</option>
         </select>
     </div>
     <div class="form-group col-md-2">
@@ -284,15 +294,16 @@
 <div class="form-row">
     <div class="form-group col-md-2">
         <label>पुरुष सभासद</label>
-        <input type="number" min="0" step="1" inputmode="numeric" id="male" name="male" class="form-control" value="{{ old('male', $sangh->male ?? '') }}">
+        {{-- Text + data-int (not type=number): Marathi digits typed here are converted to 0-9. --}}
+        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" data-int id="male" name="male" class="form-control" value="{{ old('male', $sangh->male ?? '') }}">
     </div>
     <div class="form-group col-md-2">
         <label>महिला सभासद</label>
-        <input type="number" min="0" step="1" inputmode="numeric" id="female" name="female" class="form-control" value="{{ old('female', $sangh->female ?? '') }}">
+        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" data-int id="female" name="female" class="form-control" value="{{ old('female', $sangh->female ?? '') }}">
     </div>
     <div class="form-group col-md-2">
         <label>एकूण सभासद</label>
-        <input type="number" min="0" step="1" inputmode="numeric" id="total_members" name="total_members" class="form-control" value="{{ old('total_members', $sangh->total_members ?? '') }}" readonly>
+        <input type="text" inputmode="numeric" data-int id="total_members" name="total_members" class="form-control" value="{{ old('total_members', $sangh->total_members ?? '') }}" readonly>
     </div>
 </div>
 
@@ -745,7 +756,10 @@
 
         function sanitizeWholeNumberInput(input) {
             if (!input) return '';
-            const sanitized = String(input.value || '').replace(/\D/g, '');
+            // Marathi / other Indic digits → 0-9 first, then keep digits only.
+            const sanitized = String(input.value || '')
+                .replace(/[०-९]/g, (d) => String(d.charCodeAt(0) - 0x0966))
+                .replace(/\D/g, '');
             input.value = sanitized;
             return sanitized;
         }

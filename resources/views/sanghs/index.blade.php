@@ -100,11 +100,11 @@
                         </select>
                     </div>
                     <div class="col-lg-3 col-md-2 col-sm-4">
-                        <label class="form-label fw-bold small text-muted mb-1">From Date</label>
+                        <label class="form-label fw-bold small text-muted mb-1">नोंदणी दिनांक From</label>
                         <input type="date" name="from_date" value="{{ request('from_date') }}" class="form-control form-control-sm shadow-none">
                     </div>
                     <div class="col-lg-3 col-md-2 col-sm-4">
-                        <label class="form-label fw-bold small text-muted mb-1">To Date</label>
+                        <label class="form-label fw-bold small text-muted mb-1">नोंदणी दिनांक To</label>
                         <input type="date" name="to_date" value="{{ request('to_date') }}" class="form-control form-control-sm shadow-none">
                     </div>
                 </div>
@@ -172,9 +172,20 @@
                 </form>
                 @endif
                 
-                {{-- Number of Sanghs matching the current filters --}}
-                <div class="px-3 py-1 bg-white border rounded shadow-sm d-flex align-items-center">
-                    <span class="text-secondary fw-semibold">Total Sangh Found: <strong class="text-dark" style="font-size: 1.1em;">{{ number_format($sanghs->total()) }}</strong></span>
+                {{-- Counts for the current filters --}}
+                <div class="filter-stats">
+                    @foreach([
+                        ['Total Sangh Found', $sanghs->total()],
+                        ['प्रादेशिक विभाग', $stats['vibhags']],
+                        ['जिल्हा', $stats['districts']],
+                        ['Register Receipts', $stats['register_receipts']],
+                        ['Renewal Receipts', $stats['renewal_receipts']],
+                    ] as [$statLabel, $statValue])
+                        <div class="filter-stat">
+                            <span class="filter-stat-label">{{ $statLabel }}</span>
+                            <span class="num-pill">{{ number_format($statValue) }}</span>
+                        </div>
+                    @endforeach
                 </div>
             </div>
         </div>
@@ -186,7 +197,7 @@
             <h5 class="mb-0">
                 <i class="fa fa-table text-primary"></i> Sangh Records
             </h5>
-            <small class="text-muted">Total: {{ $sanghs->total() }} records</small>
+            <small class="text-muted">Total: <span class="num-pill">{{ number_format($sanghs->total()) }}</span> records</small>
         </div>
         <div class="table-responsive">
             <table class="table table-hover table-sm mb-0">
@@ -205,16 +216,16 @@
                 <tbody>
                     @forelse($sanghs as $s)
                         <tr>
-                            <td><span class="badge bg-light text-dark">{{ $s->unique_ref_no }}</span></td>
-                            <td>{{ $s->pradeshik_ref_no }}</td>
-                            <td>{{ $s->district_ref_no }}</td>
+                            <td>@if($s->unique_ref_no)<span class="num-pill">{{ $s->unique_ref_no }}</span>@endif</td>
+                            <td>@if($s->pradeshik_ref_no)<span class="num-pill">{{ $s->pradeshik_ref_no }}</span>@endif</td>
+                            <td>@if($s->district_ref_no)<span class="num-pill">{{ $s->district_ref_no }}</span>@endif</td>
                             <td>
                                 <strong>{{ $s->name_of_sangh }}</strong>
                             </td>
                             <td>{{ $s->pradeshik_vibhag }}</td>
                             <td>{{ $s->district }}</td>
                             <td>
-                                <span class="badge bg-info">{{ $s->total_members ?? 0 }}</span>
+                                <span class="num-pill">{{ $s->total_members ?? 0 }}</span>
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
@@ -356,6 +367,49 @@
 
         .header-actions {
             gap: 0.5rem;
+        }
+
+        /* Filter counts: chips that wrap on desktop, a 2-column grid on phones. */
+        .filter-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            width: 100%;
+        }
+
+        .filter-stat {
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.4rem 0.75rem;
+            background: #fff;
+            border: 1px solid #e7eaf0;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+        }
+
+        .filter-stat-label {
+            color: #6c757d;
+            font-weight: 600;
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 576px) {
+            .filter-stats {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .filter-stat:first-child {
+                grid-column: 1 / -1;   /* Total spans the full row */
+            }
+
+            .filter-stat-label {
+                white-space: normal;
+                font-size: 0.8rem;
+            }
         }
 
         .header-actions .btn {

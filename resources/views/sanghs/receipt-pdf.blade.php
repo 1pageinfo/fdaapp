@@ -254,7 +254,7 @@
           <div class="payment-details">
               <p>
                   @if($renewal->bank_name) <strong>बँकेचे नाव (Bank):</strong> {{ $renewal->bank_name }} @endif
-                  @if($renewal->cheque_no) | <strong>चेक/चलन (Cheque/Txn No):</strong> {{ $renewal->cheque_no }} @endif
+                  @if($renewal->cheque_no) | <strong>चेक क्रमांक / Transaction क्रमांक:</strong> {{ $renewal->cheque_no }} @endif
                   @if($renewal->cheque_date) | <strong>दिनांक (Date):</strong> {{ \Carbon\Carbon::parse($renewal->cheque_date)->format('d-m-Y') }} @endif
               </p>
           </div>

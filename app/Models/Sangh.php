@@ -81,6 +81,7 @@ class Sangh extends Model
         'created_by',
         'assigned_to',
         'created_date',
+        'registered_at',
     ];
 
     /**
@@ -95,7 +96,8 @@ class Sangh extends Model
         'pradeshik_admission_fee' => 'decimal:2',
         'pradeshik_annual_fee' => 'decimal:2',
         'pradeshik_development_fee' => 'decimal:2',
-        'created_date'  => 'datetime',
+        'created_date'  => 'datetime', // activity tracking only
+        'registered_at' => 'date',     // संघ नोंदणी दिनांक — drives numbering, filters, dashboard
         'created_at'    => 'datetime',
         'updated_at'    => 'datetime',
     ];

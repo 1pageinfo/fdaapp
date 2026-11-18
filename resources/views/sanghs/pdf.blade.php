@@ -26,7 +26,7 @@
             <tr><td>जिल्हा मधे संघाचा अनु. क्र.</td><td>{{ $sangh->district_ref_no }}</td></tr>
             <tr><td>वर्ष</td><td>@fy($sangh->registration_year)</td></tr>
             <tr><td>संघाचे नाव</td><td>{{ $sangh->name_of_sangh }}</td></tr>
-            <tr><td>श्रेणी</td><td>{{ $sangh->category_code }}</td></tr>
+            <tr><td>श्रेणी</td><td>{{ \App\Support\SanghCodes::categoryLabel($sangh->category_code) }}</td></tr>
             <tr><td>संघ प्रकार</td><td>{{ $sangh->sangh_type_code }}</td></tr>
             <tr><td>प्रादेशिक विभाग</td><td>{{ $sangh->pradeshik_vibhag }}</td></tr>
             <tr><td>जिल्हा</td><td>{{ $sangh->district }}</td></tr>
@@ -50,8 +50,8 @@
             <tr><td>सचिव व्हॉट्सअप</td><td>{{ $sangh->secretary_whatsapp }}</td></tr>
             <tr><td>सचिव इमेल</td><td>{{ $sangh->secretary_email }}</td></tr>
 
+            <tr><td>संघ नोंदणी दिनांक</td><td>{{ $sangh->registered_at?->format('d-m-Y') ?? '-' }}</td></tr>
             <tr><td>Created By</td><td>{{ $sangh->creator->name ?? $sangh->created_by }}</td></tr>
-            <tr><td>Created Date</td><td>{{ $sangh->created_date?->format('Y-m-d H:i:s') ?? $sangh->created_at->format('Y-m-d H:i:s') }}</td></tr>
         </table>
     </div>
 </body>
