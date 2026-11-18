@@ -5,6 +5,17 @@
 
     RewriteEngine On
 
+    # SECURITY: this app folder is also the website root, so the app's own files
+    # must never be served directly. Uploaded files are served by the /media route.
+    # Block internal folders (and any PHP inside them)...
+    RewriteRule ^(\.git|vendor|storage|bootstrap|config|database|resources|routes|tests|e2e|app|lang|node_modules|public/storage)(/|$) - [F,L]
+    # ...hidden files (.env, .git*, .htaccess) except the well-known folder...
+    RewriteRule (^|/)\.(?!well-known) - [F,L]
+    # ...and project files.
+    RewriteRule ^(artisan|composer\.(json|lock|phar)|package(-lock)?\.json|phpunit\.xml|vite\.config\.js|tailwind\.config\.js|postcss\.config\.js|playwright\.config\.js|dev\.(bat|ps1)|htaccess|[^/]+\.md|[^/]+\.pdf)$ - [F,L]
+    # Only index.php may run as PHP; any other .php URL is refused.
+    RewriteRule ^(?!index\.php$).*\.(php\d?|phtml|phar|pht)$ - [F,L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
