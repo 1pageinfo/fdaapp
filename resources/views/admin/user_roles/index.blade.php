@@ -148,7 +148,7 @@
 
     .role-chip-input:checked + .role-chip-superadmin { background: #dc3545; }
     .role-chip-input:checked + .role-chip-member { background: #198754; }
-    .role-chip-input:checked + .role-chip-moderator { background: #0d6efd; }
+    .role-chip-input:checked + .role-chip-admin { background: #0d6efd; }
 
     .role-chip-input:focus-visible + .role-chip {
         box-shadow: 0 0 0 .15rem rgba(13, 110, 253, .35);

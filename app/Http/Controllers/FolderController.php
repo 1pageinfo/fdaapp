@@ -44,7 +44,7 @@ class FolderController extends Controller
         if ($request->user()->hasRole('superadmin')) {
             $query->whereNull('parent_id'); // only main folders
         } else {
-            // Members / Moderators: every folder they can see whose parent they can't —
+            // Members / Admins: every folder they can see whose parent they can't —
             // so a subfolder assigned to them still shows up here (not just main folders).
             $visibleIds = Folder::query()->visibleTo($request->user())->pluck('id');
             $query->whereIn('id', $visibleIds)

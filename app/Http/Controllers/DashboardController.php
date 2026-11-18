@@ -22,7 +22,7 @@ use Spatie\Activitylog\Models\Activity;
 /**
  * Dashboard: a detailed overview of the app.
  *
- * Scope — Superadmin sees the whole organisation; Members and Moderators see only
+ * Scope — Superadmin sees the whole organisation; Members and Admins see only
  * what is theirs (created by / assigned to them, or shared via their groups), using
  * the same rules as every module's own list (the models' scopeVisibleTo()).
  *

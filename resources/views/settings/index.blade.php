@@ -112,7 +112,7 @@
                     <h5 class="d-flex align-items-center mb-1">
                         <i class="ti-key mr-2 text-warning"></i> User Permissions
                     </h5>
-                    <p class="text-muted small mb-1">Grant a specific user (Member or Moderator) access per feature. They only ever see their own / assigned records.</p>
+                    <p class="text-muted small mb-1">Grant a specific user (Member or Admin) access per feature. They only ever see their own / assigned records.</p>
                     <p class="text-muted small mb-3"><i class="ti-info-alt"></i> Always available to everyone: Dashboard (own counts), Contacts, Profile, Search, Notifications, Activity Logs (own). Settings, Sangh Fees and Manage Users are superadmin only.</p>
 
                     {{-- User search / select --}}
