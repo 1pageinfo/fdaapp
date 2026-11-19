@@ -13,7 +13,9 @@ class FolderReorderTest extends TestCase
 
     public function test_can_reorder_folders()
     {
+        // Reordering needs folders.edit; a superadmin has every permission.
         $user = User::factory()->create();
+        $user->roles()->attach(\App\Models\Role::firstOrCreate(['slug' => 'superadmin'])->id);
 
         $folder1 = Folder::create(['name' => 'Folder 1', 'sort_order' => 1]);
         $folder2 = Folder::create(['name' => 'Folder 2', 'sort_order' => 2]);

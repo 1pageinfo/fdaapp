@@ -18,7 +18,9 @@ class UserDeletionTest extends TestCase
     public function test_user_can_be_deleted_and_anonymized_safely()
     {
         // 1. Setup Admin and User
+        // Deleting users is superadmin-only.
         $admin = User::factory()->create();
+        $admin->roles()->attach(Role::firstOrCreate(['slug' => 'superadmin'])->id);
         $user = User::factory()->create([
             'name' => 'John Doe',
             'email' => 'john@example.com',
@@ -90,7 +92,9 @@ class UserDeletionTest extends TestCase
 
     public function test_user_cannot_delete_themselves()
     {
+        // Even a superadmin can't delete their own account.
         $user = User::factory()->create();
+        $user->roles()->attach(Role::firstOrCreate(['slug' => 'superadmin'])->id);
 
         $response = $this->actingAs($user)->delete(route('admin.user_roles.destroy', $user));
 
